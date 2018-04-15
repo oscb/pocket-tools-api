@@ -1,0 +1,20 @@
+{
+  "name": "PocketToolsNodeAPI",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@sendgrid/mail": "^6.2.1",
+    "article-parser": "^2.3.5",
+    "jsdom": "^11.7.0",
+    "kindle-periodical": "oscb/kindle-periodical",
+    "lodash": "^4.17.5",
+    "minimist": "^1.2.0",
+    "pocket-promise": "^1.1.0",
+    "readability": "mozilla/readability",
+    "utf8": "^3.0.0"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
