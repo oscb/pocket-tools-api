@@ -32,57 +32,30 @@ function getTemplate (filename) {
   });
 }
 
-const start = async function () {
-  // Default options
-  let opts = {
-    orderBy:'newest',
-    countBy: 'time',
-    count: 60,
-    parser: 'mozilla',
-    mode: 'exclude',
-    domain: null,
-    tags: null
-  };
-  
-  // Params parsing
-  const args = parseArgs(process.argv.slice(2));
-  if ('h' in args || '?' in args) {
-    console.log("Args: [-s: new | old ] [-c: count | time ] \
-    [-n: number] [-p: mozilla | npm] [-m: exclude | include ] [-d: domain] [tags]");
-    return;
-  }
-  
-  if ('s' in args) opts.orderBy = (args['s'].trim() == 'new') ? 'newest' : 'oldest';
-  if ('c' in args) opts.countBy = args['c'].trim();
-  if ('n' in args) opts.count = args['n'].trim();
-  if ('p' in args) opts.parser = args['p'].trim();
-  if ('m' in args) opts.mode = args['m'].trim();
-  if ('d' in args) opts.domain = args['d'].trim();
-  if ('_' in args) opts.tags = args['_'].map(x => x.trim().replace(/['"]+/g, ''));
-  
-  // Connect to pocket
+const MAX_QUERIES = 5;
+const WPM = 230;
+
+function ExecuteQuery (user, query) {
   const pocket = new Pocket({
     consumer_key: config.pocket_key, 
-    access_token: config.access_token
+    access_token: user.token
   });
-  
-  let filteredArticles = [];
-  const MAX_QUERIES = 5;
-  const WPM = 230;
+
+  let queryCount = (i == 0 && query.countType === 'count') ? query.count : 20;
+  let pocketQuery = {
+    offset: i * queryCount,
+    count: queryCount,
+    sort: query.orderBy,
+    detailType: 'complete',
+  };
+  if (query.domain != null) defaultQuery.domain = query.domain;
+
   let count = 0;
   let i = 0;
-  while(count < opts.count && i <= MAX_QUERIES) {
-    // Retrieve Articles
-    let queryCount = (i == 0 && opts.countBy === 'count') ? opts.count : 20;
-    let defaultQuery = {
-      offset: i * queryCount,
-      count: queryCount,
-      sort: opts.orderBy,
-      detailType: 'complete',
-    };
-    if (opts.domain != null) defaultQuery.domain = opts.domain;
 
-    let articles = await pocket.get({...defaultQuery});
+  while(count < query.count && i <= MAX_QUERIES) {
+    let articles = await pocket.get({...pocketQuery});
+
     if (articles.error) throw articles.error;
     if (articles.list.length === 0) break;
     
@@ -94,10 +67,10 @@ const start = async function () {
 
     for(const article of articles) {
       if (article.has_video != "0") continue;
-      if (opts.mode === 'exclude' && article.tags != null) {
+      if (query.tagsMode === 'exclude' && article.tags != null) {
         let blacklisted = false;
         if (article.tags) {
-          for(let tag of opts.tags) {
+          for(let tag of query.tags) {
             if (tag in article.tags) {
               blacklisted = true;
               break;
@@ -110,7 +83,7 @@ const start = async function () {
         }
       }
       
-      if (opts.mode === 'include') {
+      if (query.tagsMode === 'include') {
         if (article.tags === null) {
           console.log(`~ ${article.resolved_title}`);
           continue;
@@ -119,7 +92,7 @@ const start = async function () {
         let blacklisted = true;
         if (article.tags) {
           for(let tag in article.tags) {
-            if (tag in opts.tags) {
+            if (tag in query.tags) {
               blacklisted = false;
             }
           }
@@ -132,14 +105,19 @@ const start = async function () {
       
       console.log(`+ ${article.resolved_title}`);
       filteredArticles.push(article);
-      count += (opts.mode === 'count') ? 1 : (article.word_count/WPM)
-      if (count > opts.count) {
+      count += (query.countType === 'count') ? 1 : (article.word_count/WPM)
+      if (count > query.count) {
         break;
       }
     }
     i++;
   }
-  
+  return filteredArticles;
+}
+
+function SendDelivery(query, ...opts) {
+  let filteredArticles = ExecuteQuery(query);
+
   const contentTemplate = _.template(await getTemplate('article.html'));
   let articlesData = [];
   for(let article of filteredArticles) {
@@ -254,9 +232,5 @@ const start = async function () {
   };
   var response = await sendGrid.send(msg);
 
-  // TODO: Cleanup
-}
-
-if (require.main === module) {
-  start();
+  return true;
 }
