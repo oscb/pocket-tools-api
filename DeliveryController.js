@@ -6,106 +6,119 @@ const config = require('./config.json');
 const mongoose = require('mongoose');
 const User = require('./User');
 const Delivery = require('./Delivery');
+const DeliveryUtils = require('./DeliveryManager');
+const passport = require('passport');
 
-router.use(bodyParser.urlencoded({ extended: true }));
-router.use(bodyParser.json());
-
-function getUser(req) {
-  return User.findOne({token: req.headers.authorization}).exec();
-}
-
-router.get('/', async (req, res) => {
-  let user = await getUser(req);
-  if (user === null) {
-    return res.status(400).send("No user found");
-  } 
-  let userDeliveries = await Delivery.find(
-    {user: new mongoose.Schema.ObjectId(user._id)}).exec();
-  res.status(200).send(userDeliveries);
-});
-
-// router.get('/:id', async (req, res) => {
-//   // TODO: Handle nicer this validation of only seeing things for this user
-  
-//   let delivery = deliveries.find((x) => x.id == id);
-//   return res.status(200).send(delivery);
-// });
-
-router.post('/', async (req, res) => {
-  // TODO: validate
-  let user = await getUser(req);
-  if (user === null) {
-    return res.status(400).send("No user found");
-  } 
-
-  let delivery = {
-    ...req.body,
-    active: true,
-    deliveries: [],
-    user: new mongoose.Schema.ObjectId(user._id),
-    
-    // name: req.body.name,
-    // email: req.body.email,
-    // query: req.body.query, // TODO: Validate
-    // frequency: req.body.frequency, 
-    // time: req.body.time,
-    // day: req.body.day,
-    // timezone: req.body.timezone,
+router.get(
+  '/', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    let userDeliveries = await Delivery.find(
+      { user: req.user._id }).exec();
+    res.status(200).send(userDeliveries);
   }
-  delivery = await Delivery.create(delivery);
-  res.status(201).send(delivery);
-});
+);
 
-router.put('/:id', function (req, res) {
-  let delivery = deliveries.findIndex(req.params.id);
-  if (delivery == null) {
-    res.status(500).send("There was a problem finding the delivery.");
-  } else {
-    // TODO: Validation
+router.get(
+  '/:id', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    let delivery = await Delivery.findById(req.params.id).exec();
+    if (!delivery.user.equals(req.user._id)) {
+      return res.status(401).send('Unauthorized');
+    } 
+    return res.status(200).send(delivery);
+  }
+);
+
+router.post(
+  '/', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    let delivery = {
+      ...req.body,
+      active: true,
+      deliveries: [],
+      user: req.user._id,
+      
+      // name: req.body.name,
+      // email: req.body.email,
+      // query: req.body.query, // TODO: Validate
+      // frequency: req.body.frequency, 
+      // time: req.body.time,
+      // day: req.body.day,
+      // timezone: req.body.timezone,
+    }
+    delivery = await Delivery.create(delivery);
+    res.status(201).send(delivery);
+  }
+);
+
+router.put(
+  '/:id', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    let delivery = await Delivery.findIndex(req.params.id).exec();
+    if (delivery == null) {
+      return res.status(500).send("There was a problem finding the delivery.");
+    } 
+    if (!delivery.user.equals(req.user._id)) {
+      return res.status(401).send('Unauthorized');
+    } 
+    // TODO: remove all things from body that shouldn't be updted
     delivery = {...delivery, ...req.body};
     res.status(200).send(delivery);
   }
-});
+);
 
 // Delete an user
-router.delete('/:id', function(req, res) {
-  let delivery = deliveries.findIndex(req.params.id);
-  if (delivery == null) {
-    res.status(500).send("There was a problem finding the delivery.");
-  } else {
-    // TODO: Validation
-    users.splice(req.params.id, 1);
-    res.status(200).send("Deleted");
+router.delete(
+  '/:id', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    // TODO: Check first if user can delete, soft delete
+    let delivery = await Delivery.findById({_id: req.params.id}).exec();
+    if (delivery == null) {
+      return res.status(500).send('There was a problem finding the delivery.');
+    }  
+    if (!delivery.user.equals(req.user._id)) {
+      return res.status(401).send('Unauthorized');
+    } 
+    await Delivery.findByIdAndRemove({_id: req.params.id}).exec();
+    res.status(200).send('Deleted');
   }
-});
+);
 
-router.post('/:id/execute', function(req, res) {
-  let delivery = deliveries.findIndex(req.params.id);
-  if (delivery == null) {
-    res.status(500).send("There was a problem finding the delivery.");
-  } else {
-    
+router.get(
+  '/:id/execute', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    let delivery = await Delivery.findById({_id: req.params.id}).exec();
+    if (delivery == null) {
+      return res.status(500).send('There was a problem finding the delivery.');
+    }  
+    if (!delivery.user.equals(req.user._id)) {
+      return res.status(401).send('Unauthorized');
+    } 
+    let articles = await DeliveryUtils.ExecuteQuery(req.user, delivery.query);
+    res.status(200).send(articles);
   }
-});
+);
 
-// router.post('/:id/deliver', function(req, res) {
-//   // TODO: validate, this can only run from the server itself
-//   let delivery = deliveries.findIndex(req.params.id);
-//   if (delivery == null) {
-//     res.status(500).send("There was a problem finding the delivery.");
-//   } else {
-    
-//   }
-// });
-
-// router.post('/:id/deliver', function(req, res) {
-//   // TODO: validate, this can only run from the server itself
-//   let delivery = deliveries.findIndex(req.params.id);
-//   if (delivery == null) {
-//     res.status(500).send("There was a problem finding the delivery.");
-//   } else {
-    
-//   }
-// });
+router.get(
+  '/:id/deliver', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    let delivery = await Delivery.findById({_id: req.params.id}).exec();
+    if (delivery == null) {
+      return res.status(500).send('There was a problem finding the delivery.');
+    }  
+    if (!delivery.user.equals(req.user._id)) {
+      return res.status(401).send('Unauthorized');
+    } 
+    let sent = await DeliveryUtils.SendDelivery(req.user, delivery.query);
+    res.status(200).send(sent);
+  }
+);
 
 module.exports = router;

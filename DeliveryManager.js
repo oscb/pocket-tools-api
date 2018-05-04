@@ -20,7 +20,6 @@ const moment = require('moment');
 
 const config = require('./config.json');
 
-
 const { JSDOM } = jsdom;
 const { Readability } = readability;
 
@@ -35,12 +34,17 @@ function getTemplate (filename) {
 const MAX_QUERIES = 5;
 const WPM = 230;
 
-function ExecuteQuery (user, query) {
+var exports = module.exports = {};
+
+exports.ExecuteQuery = async (user, query) => {
   const pocket = new Pocket({
     consumer_key: config.pocket_key, 
     access_token: user.token
   });
 
+  let filteredArticles = [];
+  let count = 0;
+  let i = 0;
   let queryCount = (i == 0 && query.countType === 'count') ? query.count : 20;
   let pocketQuery = {
     offset: i * queryCount,
@@ -49,9 +53,6 @@ function ExecuteQuery (user, query) {
     detailType: 'complete',
   };
   if (query.domain != null) defaultQuery.domain = query.domain;
-
-  let count = 0;
-  let i = 0;
 
   while(count < query.count && i <= MAX_QUERIES) {
     let articles = await pocket.get({...pocketQuery});
@@ -113,10 +114,10 @@ function ExecuteQuery (user, query) {
     i++;
   }
   return filteredArticles;
-}
+};
 
-function SendDelivery(query, ...opts) {
-  let filteredArticles = ExecuteQuery(query);
+exports.SendDelivery = async (user, query, ...opts) => {
+  let filteredArticles = await exports.ExecuteQuery(user, query);
 
   const contentTemplate = _.template(await getTemplate('article.html'));
   let articlesData = [];
@@ -233,4 +234,4 @@ function SendDelivery(query, ...opts) {
   var response = await sendGrid.send(msg);
 
   return true;
-}
+};

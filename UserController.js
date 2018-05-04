@@ -4,9 +4,7 @@ const bodyParser = require('body-parser');
 const fetch = require('node-fetch');
 const config = require('./config.json');
 const User = require('./User');
-
-router.use(bodyParser.urlencoded({ extended: true }));
-router.use(bodyParser.json());
+const passport = require('passport');
 
 // Get login url and req token
 router.get('/login', async (req, res) => {
@@ -45,40 +43,68 @@ router.post('/login', async (req, res) => {
 
 // Gets all users
 // TODO: Remove this eventually
-router.get('/', async (req, res) => {
-  let allUsers = await User.find({})
-  res.status(200).send(allUsers);
-});
+router.get(
+  '/', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    if (req.user.type != 'admin') return res.status(401).send();
+    let allUsers = await User.find({}).exec();
+    res.status(200).send(allUsers);
+  }
+);
 
-router.get('/:id', async (req, res) => {
-  let user = await User.findById(req.params.id); 
-  res.status(200).send(user);
-});
+router.get(
+  '/:id', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    if (req.user._id != req.params.id) return res.status(401).send();
+    let user = await User.findById(req.params.id).exec(); 
+    res.status(200).send(user);
+  }
+);
 
 // Creates a new user
-router.post('/', async (req, res) => {
-  // TODO: Add validations
-  let user = {
-    username: req.body.username,
-    active: true,
-    email: req.body.email,
-    kindle_email: req.body.kindle_email,
-    token: req.body.token,
-    type: req.body.type
-  };
-  user = await User.create(user);
-  res.status(201).send(user);
-});
+router.post(
+  '/', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    // TODO: Add validations
+    let user = {
+      username: req.body.username,
+      active: true,
+      email: req.body.email,
+      kindle_email: req.body.kindle_email,
+      token: req.body.token,
+      type: req.body.type
+    };
+    user = await User.create(user);
+    res.status(201).send(user);
+  }
+);
 
-router.put('/:id', async (req, res) => {
-  let user = await User.findByIdAndUpdate(req.params.id, req.body, {new: true});
-  res.status(200).send(user);
-});
+router.put(
+  '/:id', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    if (req.user._id != req.params.id) return res.status(401).send();
+    let user = await User.findByIdAndUpdate(
+      req.params.id, 
+      req.body, 
+      { new: true })
+      .exec();
+    res.status(200).send(user);
+  }
+);
 
 // Delete an user
-router.delete('/:id', async (req, res) => {
-  let user = await User.findByIdAndRemove(req.params.id);
-  res.status(200).send(`User ${user.username} deleted`);
-});
+router.delete(
+  '/:id', 
+  passport.authenticate('bearer', { session: false }), 
+  async (req, res) => {
+    if (req.user._id != req.params.id) return res.status(401).send();
+    let user = await User.findByIdAndRemove(req.params.id).exec();
+    res.status(200).send(`User ${user.username} deleted`);
+  }
+);
 
 module.exports = router;

@@ -12,7 +12,10 @@ const SentDeliverySchema = new mongoose.Schema({
 });
 
 const DeliverySchema = new mongoose.Schema({
-  user: mongoose.Schema.ObjectId,
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   active: Boolean,
   query: {
     domain: String,
@@ -23,7 +26,7 @@ const DeliverySchema = new mongoose.Schema({
     tags: [String]
   },
   frequency: String,
-  time: Date,
+  time: String,
   day: String,
   deliveries: [SentDeliverySchema]
 }, { 

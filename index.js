@@ -41,14 +41,15 @@ const start = async function () {
     parser: 'mozilla',
     mode: 'exclude',
     domain: null,
-    tags: null
+    tags: null,
+    longformOnly: false
   };
   
   // Params parsing
   const args = parseArgs(process.argv.slice(2));
   if ('h' in args || '?' in args) {
     console.log("Args: [-s: new | old ] [-c: count | time ] \
-    [-n: number] [-p: mozilla | npm] [-m: exclude | include ] [-d: domain] [tags]");
+    [-n: number] [-p: mozilla | npm] [-l] [-m: exclude | include ] [-d: domain] [tags]");
     return;
   }
   
@@ -59,6 +60,7 @@ const start = async function () {
   if ('m' in args) opts.mode = args['m'].trim();
   if ('d' in args) opts.domain = args['d'].trim();
   if ('_' in args) opts.tags = args['_'].map(x => x.trim().replace(/['"]+/g, ''));
+  if ('l' in args) opts.longformOnly = true;
   
   // Connect to pocket
   const pocket = new Pocket({
@@ -127,6 +129,13 @@ const start = async function () {
             console.log(`~ ${article.resolved_title}`);
             continue;
           } 
+        }
+      }
+
+      if (opts.longformOnly) {
+        if (article.word_count/WPM < 15) {
+          console.log(`~ ${article.resolved_title}`);
+          continue;
         }
       }
       
@@ -253,7 +262,7 @@ const start = async function () {
     ],
   };
   var response = await sendGrid.send(msg);
-
+  
   // TODO: Cleanup
 }
 
