@@ -6,7 +6,7 @@ const ArticleSchema = new mongoose.Schema({
   // TODO: What else? Content?
 });
 
-const SentDeliverySchema = new mongoose.Schema({
+const MailingSchema = new mongoose.Schema({
   datetime: Date,
   articles: [ArticleSchema]
 });
@@ -21,14 +21,15 @@ const DeliverySchema = new mongoose.Schema({
     domain: String,
     countType: String,
     count: Number,
-    tagsMode: String,
     orderBy: String,
-    tags: [String]
+    includedTags: [String],
+    excludedTags: [String],
+    longformOnly: Boolean
   },
   frequency: String,
   time: String,
   day: String,
-  deliveries: [SentDeliverySchema]
+  mailings: [MailingSchema]
 }, { 
   strict: true 
 });

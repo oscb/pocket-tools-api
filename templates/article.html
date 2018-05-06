@@ -8,7 +8,17 @@
         <p><i><a href="<%= url %>"><%= url %></a></i></p>
         <h1><%= title %></h1>
         <p><%= author %></p>
+        <p>
+            <a href="<%= fav_url %>">★ Favorite</a> |
+            <a href="<%= archive_url %>">⦿ Archive</a> |
+            <a href="<%= fav_and_archive_url %>">✪ Fav + Archive</a>
+        </p>
         <%= content %>
+        <p>
+            <a href="<%= fav_url %>">★ Favorite</a> |
+            <a href="<%= archive_url %>">⦿ Archive</a> |
+            <a href="<%= fav_and_archive_url %>">✪ Fav + Archive</a>
+        </p>
     </article>
 </body>
 </html>

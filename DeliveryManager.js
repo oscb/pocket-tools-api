@@ -68,39 +68,38 @@ exports.ExecuteQuery = async (user, query) => {
 
     for(const article of articles) {
       if (article.has_video != "0") continue;
-      if (query.tagsMode === 'exclude' && article.tags != null) {
-        let blacklisted = false;
+
+      let included = false;
+      if (query.includedTags.length > 0) {
         if (article.tags) {
-          for(let tag of query.tags) {
-            if (tag in article.tags) {
-              blacklisted = true;
+          for(let tag in article.tags) {
+            if (tag in query.includedTags) {
+              included = true;
               break;
             }
           }
         }
-        if (blacklisted) {
-          console.log(`~ ${article.resolved_title}`);
-          continue;
-        }
+      } else {
+        included = true;
       }
-      
-      if (query.tagsMode === 'include') {
-        if (article.tags === null) {
-          console.log(`~ ${article.resolved_title}`);
-          continue;
-        }
-        
-        let blacklisted = true;
+      if (!included) continue;
+
+      let excluded = false;
+      if (query.excludedTags.length > 0) {
         if (article.tags) {
-          for(let tag in article.tags) {
-            if (tag in query.tags) {
-              blacklisted = false;
+          for(let tag of query.excludedTags) {
+            if (tag in article.tags) {
+              excluded = true;
+              break;
             }
           }
-          if (blacklisted) {
-            console.log(`~ ${article.resolved_title}`);
-            continue;
-          } 
+        }
+      }
+      if (excluded) continue;
+
+      if (query.longformOnly) {
+        if (article.word_count/WPM < 20) {
+          continue;
         }
       }
       
@@ -116,12 +115,12 @@ exports.ExecuteQuery = async (user, query) => {
   return filteredArticles;
 };
 
-exports.SendDelivery = async (user, query, ...opts) => {
-  let filteredArticles = await exports.ExecuteQuery(user, query);
-
+exports.SendDelivery = async (articles, ...opts) => {
+  // TODO: Generate links? How does ID comes?
   const contentTemplate = _.template(await getTemplate('article.html'));
+
   let articlesData = [];
-  for(let article of filteredArticles) {
+  for(let article of articles) {
     let parsedArticle;
     let url = article.resolved_url != null ? article.resolved_url : article.given_url;
     if (opts.parser === 'mozilla') {
@@ -143,7 +142,12 @@ exports.SendDelivery = async (user, query, ...opts) => {
         url: articleRaw.url,
       };
     }
-    let contents = contentTemplate({ ...parsedArticle });
+    let contents = contentTemplate({ 
+      ...parsedArticle,  
+      fav_url: `http://Luna.local:3000/deliveries/articles/${article.id}/favorite`,
+      archive_url: `http://Luna.local:3000/deliveries/articles/${article.id}/archive`,
+      fav_and_archive_url: `http://Luna.local:3000/deliveries/articles/${article.id}/fav-and-archive`
+    });
     
     articlesData.push({
       "title"  : parsedArticle.title,
@@ -151,6 +155,8 @@ exports.SendDelivery = async (user, query, ...opts) => {
       "content": contents,
     });
   }
+
+  // TODO: Add extra page for Archive all
   
   const now = moment();
 
@@ -216,8 +222,8 @@ exports.SendDelivery = async (user, query, ...opts) => {
 
   sendGrid.setApiKey(config.sendgrid_token);
   const msg = {
-    to: config.test_kindle_email,
-    bcc: config.test_from_email,
+    // to: config.test_kindle_email,
+    to: config.test_from_email,
     from: config.test_from_email,
     subject: 'Pocket Tools Delivery!',
     text: 'Pocket Delivery!',
@@ -232,6 +238,7 @@ exports.SendDelivery = async (user, query, ...opts) => {
     ],
   };
   var response = await sendGrid.send(msg);
+  if (!response[0].complete) return null;
 
   return true;
 };
