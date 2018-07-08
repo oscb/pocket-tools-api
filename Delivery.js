@@ -16,6 +16,7 @@ const DeliverySchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
+  kindle_email: String,
   active: Boolean,
   query: {
     domain: String,

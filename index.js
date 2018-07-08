@@ -89,12 +89,12 @@ const start = async function () {
     if (articles.list.length === 0) break;
     
     let tmp = [];
-    for (const article_id in articles.list) {
+    for (let article_id in articles.list) {
       tmp.push(articles.list[article_id]);
     }
     articles = tmp.sort((a, b) => a.sort_id - b.sort_id);
 
-    for(const article of articles) {
+    for(let article of articles) {
       if (article.has_video != "0") continue;
       if (opts.mode === 'exclude' && article.tags != null) {
         let blacklisted = false;

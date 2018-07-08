@@ -1,29 +1,12 @@
 {
-  "id": 1,
-  "user": "TOKEN",
   "active": true,
   "query": {
-    "domain": "newyorker.com", // or null
-    "countType": "count", // or time
-    "count": "60", // minutes
-    "tagsMode": "exclude", // or include
-    "tags": [ "dev", "'game dev'" ],
-    "orderBy": "newest", // or oldest
+    "countType": "time",
+    "count": "120", 
+    "excludedTags": [ "dev", "'game dev'" ],
+    "orderBy": "newest"
   },
-  "frequency": "daily", // or weekly, or monthly
-  "time": "11:00Z", // UTC
-  "day": "1", // or Monday, or x
-  "deliveries": [
-    {
-      "id": 1,
-      "datetime": "18/04/2018 12:00pm",
-      "articles": [
-        {
-          "id": 1,
-          "pocketId": 1,
-          "url": "",
-        }
-      ]
-    }
-  ]
+  "frequency": "daily",
+  "time": "11:00",
+  "day": "1"
 }

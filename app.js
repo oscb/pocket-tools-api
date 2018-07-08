@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('./db');
+const cors = require('cors');
 const	passport = require('passport');
 const PocketStrategy = require('passport-pocket');
 const bodyParser = require('body-parser');
@@ -28,6 +29,7 @@ passport.use(new BearerStrategy(
 ));
 
 const app = express();
+app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(passport.initialize());

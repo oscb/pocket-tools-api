@@ -8,7 +8,7 @@ const passport = require('passport');
 
 // Get login url and req token
 router.get('/login', async (req, res) => {
-  const redirect_url = 'https://getpocket.com/'
+  const redirect_url = req.query.redirect_uri;
   let payload = {
       consumer_key: config.pocket_key,
       redirect_uri: redirect_url
@@ -17,28 +17,70 @@ router.get('/login', async (req, res) => {
   { 
       method: 'POST',
       body:    JSON.stringify(payload),
-      headers: { 'X-Accept': 'application/json' },
+      // body: payload,
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Accept': 'application/json' 
+      },
   });
-
-  res.status(200).send({
-    login_url: `https://getpocket.com/auth/authorize?request_token=${resp.code}&redirect_uri=${redirect_url}`,
-    token: resp.code
-  });
+  if (resp.status === 200) {
+    let respBody = await resp.json();
+    res.status(200).send({
+      login_url: `https://getpocket.com/auth/authorize?request_token=${respBody.code}&redirect_uri=${redirect_url}`,
+      code: respBody.code
+    });
+  } else {
+    res.status(500).send({
+      error: 'Couldn\'t connect to pocket.'
+    })
+  }
 });
 
 // Receives a req token and converts to access token
 router.post('/login', async (req, res) => {
   let payload = {
       consumer_key: config.pocket_key,
-      code: req.code
+      code: req.body.code
   };
-  var resp = await fetch('https://getpocket.com/v3/oauth/authorize', 
+  let resp = await fetch('https://getpocket.com/v3/oauth/authorize', 
   { 
       method: 'POST',
       body:    JSON.stringify(payload),
-      headers: { 'X-Accept': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Accept': 'application/json' 
+      },
   });
-  res.status(200).send(resp);
+  let respBody = await resp.json();
+
+  let user = await User.findOne({'username': respBody.username}).exec();
+  let hasProfile = true;
+  // Create user in DB if any
+  if (!user) {
+    user = {
+      username: respBody.username,
+      active: true,
+      token: respBody.access_token,
+      type: 'Free'
+    };
+    user = await User.create(user);
+    hasProfile = false;
+  } 
+
+  // Check if user has a kindle email setup
+  if (user && !user.kindle_email) {
+    hasProfile = false;
+  }
+
+  if (respBody.access_token != user.token) {
+    user.token = respBody.access_token;
+    await user.save();
+  }
+
+  res.status(200).send({
+    user: user,
+    hasProfile: hasProfile
+  });
 });
 
 // Gets all users

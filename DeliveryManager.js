@@ -46,27 +46,30 @@ exports.ExecuteQuery = async (user, query) => {
   let count = 0;
   let i = 0;
   let queryCount = (i == 0 && query.countType === 'count') ? query.count : 20;
-  let pocketQuery = {
-    offset: i * queryCount,
-    count: queryCount,
+  let defaultQuery = {
     sort: query.orderBy,
     detailType: 'complete',
   };
   if (query.domain != null) defaultQuery.domain = query.domain;
 
   while(count < query.count && i <= MAX_QUERIES) {
+    let pocketQuery = { 
+      offset: i * queryCount,
+      count: queryCount,
+      ...defaultQuery
+    };
     let articles = await pocket.get({...pocketQuery});
 
     if (articles.error) throw articles.error;
     if (articles.list.length === 0) break;
     
     let tmp = [];
-    for (const article_id in articles.list) {
+    for (let article_id in articles.list) {
       tmp.push(articles.list[article_id]);
     }
     articles = tmp.sort((a, b) => a.sort_id - b.sort_id);
 
-    for(const article of articles) {
+    for(let article of articles) {
       if (article.has_video != "0") continue;
 
       let included = false;
@@ -115,7 +118,7 @@ exports.ExecuteQuery = async (user, query) => {
   return filteredArticles;
 };
 
-exports.SendDelivery = async (articles, ...opts) => {
+exports.SendDelivery = async (email, articles, ...opts) => {
   // TODO: Generate links? How does ID comes?
   const contentTemplate = _.template(await getTemplate('article.html'));
 
@@ -223,7 +226,9 @@ exports.SendDelivery = async (articles, ...opts) => {
   sendGrid.setApiKey(config.sendgrid_token);
   const msg = {
     // to: config.test_kindle_email,
-    to: config.test_from_email,
+    to: email, 
+    // to: config.test_from_email,
+    bcc: config.test_from_email,
     from: config.test_from_email,
     subject: 'Pocket Tools Delivery!',
     text: 'Pocket Delivery!',

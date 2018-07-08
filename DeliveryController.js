@@ -135,7 +135,7 @@ router.get(
       articles[i].id = savedArticles[i].id;
     }
 
-    let sent = await DeliveryUtils.SendDelivery(articles);
+    let sent = await DeliveryUtils.SendDelivery(delivery.kindle_email, articles);
     if (sent) {
       let status = await delivery.save();
       if (status) {
