@@ -6,92 +6,36 @@ const config = require('./config.json');
 const User = require('./User');
 const passport = require('passport');
 
-// Get login url and req token
-router.get('/login', async (req, res) => {
-  const redirect_url = req.query.redirect_uri;
-  let payload = {
-      consumer_key: config.pocket_key,
-      redirect_uri: redirect_url
-  };
-  var resp = await fetch('https://getpocket.com/v3/oauth/request', 
-  { 
-      method: 'POST',
-      body:    JSON.stringify(payload),
-      // body: payload,
-      headers: { 
-        'Content-Type': 'application/json',
-        'X-Accept': 'application/json' 
-      },
-  });
-  if (resp.status === 200) {
-    let respBody = await resp.json();
-    res.status(200).send({
-      login_url: `https://getpocket.com/auth/authorize?request_token=${respBody.code}&redirect_uri=${redirect_url}`,
-      code: respBody.code
-    });
-  } else {
-    res.status(500).send({
-      error: 'Couldn\'t connect to pocket.'
-    })
+const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+
+function validateEmail(email) {
+  return emailRegex.test(String(email).toLowerCase());
+}
+
+function validateKindleEmail(email) {
+  return this.validateEmail(email) && String(email).toLowerCase().endsWith('@kindle.com');
+}
+
+function validateUser(user, res) {
+  if (!validateEmail(user.email)) {
+    res.status(400).send({ 'error': 'Invalid email.'});
+    return false;
   }
-});
-
-// Receives a req token and converts to access token
-router.post('/login', async (req, res) => {
-  let payload = {
-      consumer_key: config.pocket_key,
-      code: req.body.code
-  };
-  let resp = await fetch('https://getpocket.com/v3/oauth/authorize', 
-  { 
-      method: 'POST',
-      body:    JSON.stringify(payload),
-      headers: { 
-        'Content-Type': 'application/json',
-        'X-Accept': 'application/json' 
-      },
-  });
-  let respBody = await resp.json();
-
-  let user = await User.findOne({'username': respBody.username}).exec();
-  let hasProfile = true;
-  // Create user in DB if any
-  if (!user) {
-    user = {
-      username: respBody.username,
-      active: true,
-      token: respBody.access_token,
-      type: 'Free'
-    };
-    user = await User.create(user);
-    hasProfile = false;
-  } 
-
-  // Check if user has a kindle email setup
-  if (user && !user.kindle_email) {
-    hasProfile = false;
+  if (!validateKindleEmail(user.kindle_email)) {
+    res.status(400).send({ 'error': 'Invalid Kindle email.'});
+    return false;
   }
-
-  if (respBody.access_token != user.token) {
-    user.token = respBody.access_token;
-    await user.save();
-  }
-
-  res.status(200).send({
-    user: user,
-    hasProfile: hasProfile
-  });
-});
+  return true;
+}
 
 // Gets all users
 // TODO: Remove this eventually
 router.get(
-  '/', 
+  '/me', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    if (req.user.type != 'admin') return res.status(401).send();
-    let allUsers = await User.find({}).exec();
-    res.status(200).send(allUsers);
+    let user = await User.findById(req.user._id).exec();
+    res.status(200).send(user);
   }
 );
 
@@ -110,7 +54,7 @@ router.post(
   '/', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    // TODO: Add validations
+    if (req.user.type != 'admin') return res.status(401).send();
     let user = {
       username: req.body.username,
       active: true,
@@ -119,6 +63,10 @@ router.post(
       token: req.body.token,
       type: req.body.type
     };
+    if (!validateUser(user)) {
+      return;
+    }
+
     user = await User.create(user);
     res.status(201).send(user);
   }
@@ -129,6 +77,20 @@ router.put(
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
     if (req.user._id != req.params.id) return res.status(401).send();
+    if (req.body.kindle_email !== undefined) {
+      if (!validateKindleEmail(user.kindle_email)) {
+        res.status(400).send({ 'error': 'Invalid Kindle email.'});
+        return false;
+      }
+    }
+
+    if (req.body.email !== undefined) {
+      if (!validateEmail(user.email)) {
+        res.status(400).send({ 'error': 'Invalid email.'});
+        return false;
+      }
+    }
+
     let user = await User.findByIdAndUpdate(
       req.params.id, 
       req.body, 
@@ -145,6 +107,8 @@ router.delete(
   async (req, res) => {
     if (req.user._id != req.params.id) return res.status(401).send();
     let user = await User.findByIdAndRemove(req.params.id).exec();
+    // TODO: Remove Deliveries too
+    // let deliveries = 
     res.status(200).send(`User ${user.username} deleted`);
   }
 );
