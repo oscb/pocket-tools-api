@@ -59,7 +59,7 @@ router.put(
   '/:id', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    let delivery = await Delivery.findIndex(req.params.id).exec();
+    let delivery = await Delivery.findById(req.params.id).exec();
     if (delivery == null) {
       return res.status(500).send("There was a problem finding the delivery.");
     } 
@@ -68,6 +68,7 @@ router.put(
     } 
     // TODO: remove all things from body that shouldn't be updted
     delivery = {...delivery, ...req.body};
+    delivery = await Delivery.findByIdAndUpdate(req.params.id, req.body, { new: false }).exec();
     res.status(200).send(delivery);
   }
 );

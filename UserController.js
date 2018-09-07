@@ -13,7 +13,7 @@ function validateEmail(email) {
 }
 
 function validateKindleEmail(email) {
-  return this.validateEmail(email) && String(email).toLowerCase().endsWith('@kindle.com');
+  return validateEmail(email) && String(email).toLowerCase().endsWith('@kindle.com');
 }
 
 function validateUser(user, res) {
@@ -28,8 +28,6 @@ function validateUser(user, res) {
   return true;
 }
 
-// Gets all users
-// TODO: Remove this eventually
 router.get(
   '/me', 
   passport.authenticate('bearer', { session: false }), 
@@ -74,19 +72,18 @@ router.post(
 
 router.put(
   '/:id', 
-  passport.authenticate('bearer', { session: false }), 
-  async (req, res) => {
+  passport.authenticate('bearer', { session: false }),  async (req, res) => {
     if (req.user._id != req.params.id) return res.status(401).send();
     if (req.body.kindle_email !== undefined) {
-      if (!validateKindleEmail(user.kindle_email)) {
-        res.status(400).send({ 'error': 'Invalid Kindle email.'});
+      if (!validateKindleEmail(req.body.kindle_email)) {
+        res.status(400).send({ 'error': 'Invalid Kindle email'});
         return false;
       }
     }
 
     if (req.body.email !== undefined) {
-      if (!validateEmail(user.email)) {
-        res.status(400).send({ 'error': 'Invalid email.'});
+      if (!validateEmail(req.body.email)) {
+        res.status(400).send({ 'error': 'Invalid email'});
         return false;
       }
     }
@@ -94,7 +91,7 @@ router.put(
     let user = await User.findByIdAndUpdate(
       req.params.id, 
       req.body, 
-      { new: true })
+      { new: false })
       .exec();
     res.status(200).send(user);
   }

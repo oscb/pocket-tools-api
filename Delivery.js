@@ -30,6 +30,7 @@ const DeliverySchema = new mongoose.Schema({
   frequency: String,
   time: String,
   day: String,
+  autoArchive: Boolean,
   mailings: [MailingSchema]
 }, { 
   strict: true 
