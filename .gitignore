@@ -66,3 +66,5 @@ book/**
 .vscode/**
 config.json
 Edited_PocketToolsCover.jpg
+dist/**
+node_modules/**

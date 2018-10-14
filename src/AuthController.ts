@@ -1,16 +1,15 @@
-const express = require('express');
-const router = express.Router();
-const bodyParser = require('body-parser');
-const fetch = require('node-fetch');
-const config = require('./config.json');
-const User = require('./User');
-const passport = require('passport');
+import * as agent from "superagent";
+import { Router } from "express";
+import passport from 'passport';
+import { User, UserModel, Subscriptions } from "./User";
+
+export const router = Router();
 
 // Get login url and req token
 router.get('/', async (req, res) => {
   const redirect_url = req.query.redirect_uri;
   let payload = {
-      consumer_key: config.pocket_key,
+      consumer_key: process.env.POCKET_KEY,
       redirect_uri: redirect_url
   };
   var resp = await fetch('https://getpocket.com/v3/oauth/request', 
@@ -39,7 +38,7 @@ router.get('/', async (req, res) => {
 // Receives a req token and converts to access token
 router.post('/', async (req, res) => {
   let payload = {
-      consumer_key: config.pocket_key,
+      consumer_key: process.env.POCKET_KEY,
       code: req.body.code
   };
   let resp = await fetch('https://getpocket.com/v3/oauth/authorize', 
@@ -54,17 +53,17 @@ router.post('/', async (req, res) => {
   }); 
   let respBody = await resp.json();
 
-  let user = await User.findOne({'username': respBody.username}).exec();
+  let user = await UserModel.findOne({'username': respBody.username}).exec();
   let hasProfile = true;
   // Create user in DB if any
   if (!user) {
-    user = {
+    user = await UserModel.create({
       username: respBody.username,
       active: true,
       token: respBody.access_token,
-      type: 'Free'
-    };
-    user = await User.create(user);
+      credits: 10, // TODO: Default
+      subscription: Subscriptions.Free
+    } as User);
   } 
 
   if (respBody.access_token != user.token) {
@@ -87,4 +86,4 @@ router.get(
   }
 );
 
-module.exports = router
+export default router;

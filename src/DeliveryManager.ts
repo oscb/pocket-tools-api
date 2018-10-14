@@ -1,27 +1,26 @@
-const fs = require('fs');
-const path = require('path');
-const assert = require('assert');
-const request = require('request');
-const _ = require('lodash');
-const promisify = require('util').promisify;
-const writeFile = promisify(fs.writeFile);
-const readFile = promisify(fs.readFile);
-const fileStat = promisify(fs.stat);
+import * as fs from 'fs';
+import { JSDOM } from "jsdom";
+import _ from "lodash";
+import * as path from 'path';
+import { promisify } from 'util';
+import { Query, CountType } from "./Delivery";
+import { User } from "./User";
+import * as SendGrid from '@sendgrid/mail';
+import { Glob } from 'glob';
+import dayjs from 'dayjs';
+import { MailData } from '@sendgrid/helpers/classes/mail';
 
-const jsdom = require("jsdom");
+// const sendGrid = require('@sendgrid/mail');
 const readability = require('readability');
 const periodical = require('kindle-periodical');
-const parseArgs = require('minimist');
 const Pocket = require('pocket-promise');
 const { extract } = require('article-parser');
-const sendGrid = require('@sendgrid/mail');
-const { createCanvas, loadImage } = require('canvas');
-const moment = require('moment');
 
-const config = require('./config.json');
 
-const { JSDOM } = jsdom;
-const { Readability } = readability;
+const readFile = promisify(fs.readFile);
+
+const MAX_QUERIES = 5;
+const WPM = 230;
 
 function getTemplate (filename) {
   let filePath = path.join(__dirname, 'templates', filename);
@@ -31,23 +30,21 @@ function getTemplate (filename) {
   });
 }
 
-const MAX_QUERIES = 5;
-const WPM = 230;
-
-var exports = module.exports = {};
-
-exports.ExecuteQuery = async (user, query) => {
+export const ExecuteQuery = async (user: User, query: Query) => {
   const pocket = new Pocket({
-    consumer_key: config.pocket_key, 
+    consumer_key: process.env.POCKET_KEY, 
     access_token: user.token
   });
 
-  let filteredArticles = [];
+  let filteredArticles: any[] = [];
   let count = 0;
   let i = 0;
-  let queryCount = (i == 0 && query.countType === 'count') ? query.count : 20;
-  let defaultQuery = {
+  let queryCount = (i == 0 && query.countType === CountType.Count) ? query.count : 20;
+
+  // TODO: Type Pocket Query
+  let defaultQuery: any = {
     sort: query.orderBy,
+    // Needs to be complete because it cannot do the exclusion correctly with simple (doesn't contain tags)
     detailType: 'complete',
   };
   if (query.domain != null) defaultQuery.domain = query.domain;
@@ -58,22 +55,23 @@ exports.ExecuteQuery = async (user, query) => {
       count: queryCount,
       ...defaultQuery
     };
+    // TODO: Type articles from pocket
     let articles = await pocket.get({...pocketQuery});
 
     if (articles.error) throw articles.error;
     if (articles.list.length === 0) break;
     
-    let tmp = [];
+    let tmp: any[] = [];
     for (let article_id in articles.list) {
       tmp.push(articles.list[article_id]);
     }
     articles = tmp.sort((a, b) => a.sort_id - b.sort_id);
 
     for(let article of articles) {
-      if (article.has_video != "0") continue;
+      if (article.has_video !== "0") continue;
 
       let included = false;
-      if (query.includedTags.length > 0) {
+      if (query.includedTags !== undefined && query.includedTags.length > 0) {
         if (article.tags) {
           for(let tag in article.tags) {
             if (tag in query.includedTags) {
@@ -88,7 +86,7 @@ exports.ExecuteQuery = async (user, query) => {
       if (!included) continue;
 
       let excluded = false;
-      if (query.excludedTags.length > 0) {
+      if (query.excludedTags !== undefined && query.excludedTags.length > 0) {
         if (article.tags) {
           for(let tag of query.excludedTags) {
             if (tag in article.tags) {
@@ -101,6 +99,7 @@ exports.ExecuteQuery = async (user, query) => {
       if (excluded) continue;
 
       if (query.longformOnly) {
+        // TODO: Use property in article
         if (article.word_count/WPM < 20) {
           continue;
         }
@@ -108,7 +107,7 @@ exports.ExecuteQuery = async (user, query) => {
       
       console.log(`+ ${article.resolved_title}`);
       filteredArticles.push(article);
-      count += (query.countType === 'count') ? 1 : (article.word_count/WPM)
+      count += (query.countType === CountType.Count) ? 1 : (article.word_count/WPM)
       if (count > query.count) {
         break;
       }
@@ -118,15 +117,15 @@ exports.ExecuteQuery = async (user, query) => {
   return filteredArticles;
 };
 
-exports.SendDelivery = async (email, articles, ...opts) => {
+export const SendDelivery = async (email: string, articles: any, ...opts: any[]) => {
   // TODO: Generate links? How does ID comes?
   const contentTemplate = _.template(await getTemplate('article.html'));
 
-  let articlesData = [];
+  let articlesData: any = [];
   for(let article of articles) {
     let parsedArticle;
     let url = article.resolved_url != null ? article.resolved_url : article.given_url;
-    if (opts.parser === 'mozilla') {
+    if (opts['parser'] === 'mozilla') {
       const dom = await JSDOM.fromURL(url, { userAgent: "Mozilla/5.0" });
       Node = dom.window.Node;
       let articleRaw = new readability(url, dom.window.document).parse();
@@ -147,9 +146,9 @@ exports.SendDelivery = async (email, articles, ...opts) => {
     }
     let contents = contentTemplate({ 
       ...parsedArticle,  
-      fav_url: `http://Luna.local:3000/deliveries/articles/${article.id}/favorite`,
-      archive_url: `http://Luna.local:3000/deliveries/articles/${article.id}/archive`,
-      fav_and_archive_url: `http://Luna.local:3000/deliveries/articles/${article.id}/fav-and-archive`
+      fav_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/favorite`,
+      archive_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/archive`,
+      fav_and_archive_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/fav-and-archive`
     });
     
     articlesData.push({
@@ -160,44 +159,10 @@ exports.SendDelivery = async (email, articles, ...opts) => {
   }
 
   // TODO: Add extra page for Archive all
-  
-  const now = moment();
 
-  // TODO: When deploying need to
-  // - Bundle the font
-  // - Verify this actually works! since it requires cairo installed locally
-
-  // Creating a cover programmatically
-  const canvas = createCanvas(938, 1500);
-  const ctx = canvas.getContext('2d');
-
-  // Draw cat with lime helmet
-  var image = await loadImage(path.join(__dirname, 'PocketToolsCover.jpg'));
-  ctx.drawImage(image, 0, 0, 938, 1500);
-
-  // Write Date
-  ctx.font = '76px Alegreya Sans';
-  ctx.fillStyle = '#ffffff';
-  // TODO: Since Kindle already shows date, this should be the name of your delivery instead
-  ctx.fillText(`${now.format('ll')}`, 45, 380); 
-  
-  // Put line divider
-  ctx.strokeStyle = 'rgba(1,1,1,0.5)';
-  ctx.lineWidth=5;
-  ctx.beginPath();
-  ctx.lineTo(38, 280);
-  ctx.lineTo(520, 280);
-  ctx.stroke();
-
-  let stream = canvas.jpegStream({
-      bufsize: 4096 // output buffer size in bytes, default: 4096
-    , quality: 75 // JPEG quality (0-100) default: 75
-    , progressive: true // true for progressive compression, default: false
-  });
-  let coverPath = path.join(__dirname, 'Edited_PocketToolsCover.jpg');
-  let jpg = fs.createWriteStream(coverPath);
-  await stream.pipe(jpg);
-
+  const coverPath = path.join(__dirname, 'PocketToolsCover.jpg');
+  // TODO: Can Use the CoverCreator to create custom covers, but might not work deployed in a Function env
+  const now = dayjs();
   // Create Periodical
   const fileName = `PocketDelivery[${now.format('YY-MM-DD')}]`;
   const bookData = {
@@ -221,15 +186,15 @@ exports.SendDelivery = async (email, articles, ...opts) => {
     });
   
   // Send with sendgrid
-  let data = await readFile(path.join(__dirname, 'book', `${fileName}.mobi`));
-
-  sendGrid.setApiKey(config.sendgrid_token);
-  const msg = {
-    // to: config.test_kindle_email,
+  const lastPub = path.join(__dirname, `${fileName}.mobi`);
+  const tmpBookDir = path.join(__dirname, `book`);
+  let data = await readFile(lastPub);
+  SendGrid.setApiKey(process.env.SENDGRID_TOKEN!);
+  
+  const msg: MailData = {
     to: email, 
-    // to: config.test_from_email,
-    bcc: config.test_from_email,
-    from: config.test_from_email,
+    bcc: process.env.FROM_EMAIL, // TODO: Remove
+    from: process.env.FROM_EMAIL!,
     subject: 'Pocket Tools Delivery!',
     text: 'Pocket Delivery!',
     attachments: [
@@ -242,8 +207,36 @@ exports.SendDelivery = async (email, articles, ...opts) => {
       },
     ],
   };
-  var response = await sendGrid.send(msg);
-  if (!response[0].complete) return null;
+  var response = await SendGrid.send(msg);
+  if (!(response[0].statusCode === 200)) return null; // TODO: Check if it is actually a 200
+
+  // Cleanup
+  cleanup();
 
   return true;
 };
+
+function cleanup() {
+  const tmpBookDir = path.join(__dirname, `book`);
+
+  if (fs.existsSync(tmpBookDir)) {
+    fs.readdir(tmpBookDir, (err, files) => {
+      if(!err) {
+        for(let file of files) {
+          console.log(`- Deleting ${file}`);
+          fs.unlinkSync(path.join(tmpBookDir,file));
+        }
+      }
+    });
+    // This is throwing an error that folder isn't empty, even if it is.
+    // fs.rmdirSync(tmpBookDir);
+  }
+
+  fs.unlinkSync(`${__dirname}/Edited_PocketToolsCover.jpg`);
+  new Glob(`${__dirname}/*.mobi`, {}, (err, files)=>{
+    for(let file of files) {
+      console.log(`- Deleting ${file}`);
+      fs.unlinkSync(file);
+    }
+  });
+}
