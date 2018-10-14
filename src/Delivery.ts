@@ -1,5 +1,6 @@
 import { Document, Schema, model } from 'mongoose';
 import { User } from './User';
+import { ObjectId } from 'bson';
 
 
 // Interfaces
@@ -40,7 +41,7 @@ export interface Query {
 }
 
 export interface Delivery {
-  user: User | string;
+  user: User | ObjectId | string;
   kindle_email: string;
   active: boolean;
   query: Query;

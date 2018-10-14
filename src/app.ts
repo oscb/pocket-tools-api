@@ -18,14 +18,9 @@ dotenv.config();
 
 passport.use(new bearer.Strategy(
   async (token, done) => {
-    console.log("passport");
     try {
       // TODO: Validate that user can auth to pocket?
-      console.log("pre");
-      // let user = await UserModel.findOne({ token: token });
-      let user = await UserModel.findOne();
-      console.log("post");
-      console.log(user);
+      let user = await UserModel.findOne({ token: token });
       if (!user) 
       { 
         console.log("no user");
@@ -43,7 +38,6 @@ passport.use(new bearer.Strategy(
         return done(resp.error, false);
       }
 
-      console.log(user);
       return done(
         null, 
         user, 

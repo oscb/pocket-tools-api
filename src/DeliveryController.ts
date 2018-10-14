@@ -1,9 +1,9 @@
 import { Router, Request } from "express";
 import passport from 'passport';
-import { DeliveryModel } from "./Delivery";
+import { DeliveryModel, DeliveryDocument } from "./Delivery";
 import { ExecuteQuery, SendDelivery } from "./DeliveryManager";
 import * as Pocket from 'pocket-promise';
-import { User } from "./User";
+import { User, UserDocument } from "./User";
 
 export const router = Router();
 
@@ -21,11 +21,16 @@ router.get(
   '/:id', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    let delivery = await DeliveryModel.findById(req.params.id).exec();
-    if (delivery === undefined) {
+    let delivery: DeliveryDocument | null;
+    try {
+      delivery = await DeliveryModel.findById(req.params.id).exec();
+    } catch {
+      return res.status(500).send("Error retrieving delivery");
+    }
+    if (delivery === null) {
       return res.status(404).send(null);
     }
-    if (delivery !== undefined && !(delivery!.user === req.user._id)) {
+    if(!isOwnDelivery(delivery, req.user)) {
       return res.status(401).send('Unauthorized');
     } 
     return res.status(200).send(delivery);
@@ -60,11 +65,16 @@ router.put(
   '/:id', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    let delivery = await DeliveryModel.findById(req.params.id).exec();
-    if (delivery == null) {
-      return res.status(500).send("There was a problem finding the delivery.");
+    let delivery: DeliveryDocument | null;
+    try {
+      delivery = await DeliveryModel.findById(req.params.id).exec();
+    } catch {
+      return res.status(500).send("Error retrieving delivery");
+    }
+    if (delivery === null) {
+      return res.status(404).send();
     } 
-    if (!delivery.user === req.user._id) {
+    if(!isOwnDelivery(delivery, req.user)) {
       return res.status(401).send('Unauthorized');
     } 
     // TODO: remove all things from body that shouldn't be updted
@@ -108,11 +118,16 @@ router.delete(
   '/:id', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    let delivery = await DeliveryModel.findById({_id: req.params.id}).exec();
-    if (delivery == null) {
-      return res.status(500).send('There was a problem finding the delivery.');
+    let delivery: DeliveryDocument | null;
+    try {
+      delivery = await DeliveryModel.findById({_id: req.params.id}).exec();
+    } catch {
+      return res.status(500).send("Error retrieving delivery");
+    }
+    if (delivery === null) {
+      return res.status(404).send();
     }  
-    if (!delivery.user === req.user._id) {
+    if(!isOwnDelivery(delivery, req.user)) {
       return res.status(401).send('Unauthorized');
     } 
 
@@ -125,11 +140,17 @@ router.get(
   '/:id/execute', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    let delivery = await DeliveryModel.findById({_id: req.params.id}).exec();
-    if (delivery == null) {
-      return res.status(500).send('There was a problem finding the delivery.');
+    let delivery: DeliveryDocument | null;
+    try {
+      delivery = await DeliveryModel.findById({_id: req.params.id}).exec();
+    } catch {
+      return res.status(500).send("Error retrieving delivery");
+    }
+
+    if (delivery === null) {
+      return res.status(404).send();
     }  
-    if (!delivery.user === req.user._id) {
+    if(!isOwnDelivery(delivery, req.user)) {
       return res.status(401).send('Unauthorized');
     } 
     let articles = await ExecuteQuery(req.user, delivery.query);
@@ -142,11 +163,17 @@ router.get(
   '/:id/deliver', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    let delivery = await DeliveryModel.findById({_id: req.params.id}).exec();
-    if (delivery == null) {
-      return res.status(500).send('There was a problem finding the delivery.');
+    let delivery: DeliveryDocument | null;
+    try {
+      delivery = await DeliveryModel.findById({_id: req.params.id}).exec();
+    } catch {
+      return res.status(500).send("Error retrieving delivery");
+    }
+
+    if (delivery === null) {
+      return res.status(404).send();
     }  
-    if (!delivery.user === req.user._id) {
+    if(!isOwnDelivery(delivery, req.user)) {
       return res.status(401).send('Unauthorized');
     } 
     let articles = await ExecuteQuery(req.user, delivery.query);
@@ -182,13 +209,19 @@ router.get(
 router.get(
   '/mailings/:sentid/:operation',
   async (req, res) => {
-    let delivery = await DeliveryModel.findOne(
-      { 'mailings._id' : req.params.sentid }, 
-      { 
-        'user': 1,
-        'mailings.$': 1 
-      }
-    ).populate('user').exec();
+    let delivery: DeliveryDocument | null;
+    try {
+      delivery = await DeliveryModel.findOne(
+        { 'mailings._id' : req.params.sentid }, 
+        { 
+          'user': 1,
+          'mailings.$': 1 
+        }
+      ).populate('user').exec();
+    } catch {
+      return res.status(500).send("Error retrieving delivery");
+    }
+    
     if (delivery == null) {
       return res.status(500).send('There was a problem finding the delivery.');
     }
@@ -227,13 +260,18 @@ router.get(
 router.get(
   '/articles/:articleid/:operation',
   async (req, res) => {
-    let delivery = await DeliveryModel.findOne(
-      { 'mailings.articles._id' : req.params.articleid }, 
-      { 
-        'user': 1,
-        'mailings.articles.$': 1 
-      }
-    ).populate('user').exec();
+    let delivery: DeliveryDocument | null;
+    try {
+      delivery = await DeliveryModel.findOne(
+        { 'mailings.articles._id' : req.params.articleid }, 
+        { 
+          'user': 1,
+          'mailings.articles.$': 1 
+        }
+      ).populate('user').exec();
+    } catch {
+      return res.status(500).send("Error retrieving delivery");
+    }
 
     // TODO: Validate operation
     
@@ -274,10 +312,19 @@ router.get(
   '/sendAll',
   async(req, res) => {
     // 1. Transform current date into a time slot
-
+    // 2. Search for timeslot deliveries in DB
+    // 3. 
     
   }
 );
+
+function isOwnDelivery(delivery: DeliveryDocument, user: UserDocument): boolean {
+  return (
+    delivery !== undefined && 
+    delivery !== null && 
+    delivery.user.toString() === user._id.toString()
+    );
+}
 
 const timeslots = [
   '2:00',

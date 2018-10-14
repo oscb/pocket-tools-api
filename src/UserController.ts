@@ -17,7 +17,7 @@ router.get(
   '/:id', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    if (req.user._id != req.params.id) return res.status(401).send();
+    if (!isSelf(req)) return res.status(401).send();
     let user = await UserModel.findById(req.params.id).exec(); 
     return res.status(200).send(user);
   }
@@ -71,7 +71,7 @@ router.delete(
   '/:id', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    if (req.user._id != req.params.id) return res.status(401).send();
+    if (!isSelf(req)) return res.status(401).send();
     let user = await UserModel.findByIdAndRemove(req.params.id).exec();
     // TODO: Remove Deliveries too
     
