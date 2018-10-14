@@ -54,10 +54,10 @@
     "utf8": "^3.0.0"
   },
   "scripts": {
-    "start": "yarn run watch",
+    "start": "nodemon watch",
+    "build": "tsc",
     "serve": "node dist/server.js",
-    "watch": "nodemon dist/server.js && tsc -w",
-    "build": "tsc"
+    "watch": "tsc -w"
   },
   "devDependencies": {
     "eslint-plugin-import": "^2.11.0",

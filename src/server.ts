@@ -11,14 +11,3 @@ const server = App.listen(port, function(err) {
 });
 
 export default server;
-
-// import mongoose from 'mongoose';
-// import { UserModel } from './User';
-// // import { DeliveryModel } from './Delivery';
-
-// mongoose.connect('mongodb://localhost/PocketTools');
-
-// (async () => {
-//   const user = await UserModel.findOne();
-//   console.log(user);
-// })();
