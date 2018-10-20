@@ -5,25 +5,22 @@ import * as path from 'path';
 import { promisify } from 'util';
 import { Query, CountType } from "./Delivery";
 import { User } from "./User";
-import * as SendGrid from '@sendgrid/mail';
+import sgMail from "@sendgrid/mail"
 import { Glob } from 'glob';
 import dayjs from 'dayjs';
 import { MailData } from '@sendgrid/helpers/classes/mail';
 
-// const sendGrid = require('@sendgrid/mail');
 const readability = require('readability');
 const periodical = require('kindle-periodical');
 const Pocket = require('pocket-promise');
 const { extract } = require('article-parser');
 
-
 const readFile = promisify(fs.readFile);
-
 const MAX_QUERIES = 5;
 const WPM = 230;
 
 function getTemplate (filename) {
-  let filePath = path.join(__dirname, 'templates', filename);
+  let filePath = path.join(__dirname, '../', 'templates', filename);
   
   return readFile(filePath, {
     encoding: 'UTF-8'
@@ -118,106 +115,108 @@ export const ExecuteQuery = async (user: User, query: Query) => {
 };
 
 export const SendDelivery = async (email: string, articles: any, ...opts: any[]) => {
-  // TODO: Generate links? How does ID comes?
-  const contentTemplate = _.template(await getTemplate('article.html'));
-
-  let articlesData: any = [];
-  for(let article of articles) {
-    let parsedArticle;
-    let url = article.resolved_url != null ? article.resolved_url : article.given_url;
-    if (opts['parser'] === 'mozilla') {
-      const dom = await JSDOM.fromURL(url, { userAgent: "Mozilla/5.0" });
-      Node = dom.window.Node;
-      let articleRaw = new readability(url, dom.window.document).parse();
-      parsedArticle = {
-        title: articleRaw.title,
-        author: articleRaw.byline,
-        content: articleRaw.content,
-        url: articleRaw.uri,
-      };
-    } else {
-      let articleRaw = await extract(article.resolved_url);
-      parsedArticle = {
-        title: articleRaw.title,
-        author: articleRaw.author,
-        content: articleRaw.content,
-        url: articleRaw.url,
-      };
+  try {
+    // TODO: Generate links? How does ID comes?
+    const contentTemplate = _.template(await getTemplate('article.html'));
+  
+    let articlesData: any = [];
+    for(let article of articles) {
+      let parsedArticle;
+      let url = article.resolved_url != null ? article.resolved_url : article.given_url;
+      if (opts['parser'] === 'mozilla') {
+        const dom = await JSDOM.fromURL(url, { userAgent: "Mozilla/5.0" });
+        Node = dom.window.Node;
+        let articleRaw = new readability(url, dom.window.document).parse();
+        parsedArticle = {
+          title: articleRaw.title,
+          author: articleRaw.byline,
+          content: articleRaw.content,
+          url: articleRaw.uri,
+        };
+      } else {
+        let articleRaw = await extract(article.resolved_url);
+        parsedArticle = {
+          title: articleRaw.title,
+          author: articleRaw.author,
+          content: articleRaw.content,
+          url: articleRaw.url,
+        };
+      }
+      let contents = contentTemplate({ 
+        ...parsedArticle,  
+        fav_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/favorite`,
+        archive_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/archive`,
+        fav_and_archive_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/fav-and-archive`
+      });
+      
+      articlesData.push({
+        "title"  : parsedArticle.title,
+        "author" : parsedArticle.author,
+        "content": contents,
+      });
     }
-    let contents = contentTemplate({ 
-      ...parsedArticle,  
-      fav_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/favorite`,
-      archive_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/archive`,
-      fav_and_archive_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/fav-and-archive`
-    });
+  
+    // TODO: Add extra page for Archive all
+  
+    const coverPath = path.join(__dirname, '../', 'PocketToolsCover.jpg');
+    // TODO: Can Use the CoverCreator to create custom covers, but might not work deployed in a Function env
+    const now = dayjs();
+    // Create Periodical
+    const fileName = `PocketDelivery[${now.format('YY-MM-DD')}]`;
+    const bookData = {
+      "title"         : `Pocket Delivery - ${now.format('ll')}`, 
+      "creator"       : 'Pocket Tools',
+      "publisher"     : 'Pocket Tools',
+      "language"      : 'en-us',
+      "cover"         : coverPath,
+      "description"   : 'Articles fresh from your pocket',
+      "sections"      : [{
+        "title" : 'Articles',
+        "articles"  : articlesData
+      }]
+    };
     
-    articlesData.push({
-      "title"  : parsedArticle.title,
-      "author" : parsedArticle.author,
-      "content": contents,
-    });
-  }
-
-  // TODO: Add extra page for Archive all
-
-  const coverPath = path.join(__dirname, 'PocketToolsCover.jpg');
-  // TODO: Can Use the CoverCreator to create custom covers, but might not work deployed in a Function env
-  const now = dayjs();
-  // Create Periodical
-  const fileName = `PocketDelivery[${now.format('YY-MM-DD')}]`;
-  const bookData = {
-    "title"         : `Pocket Delivery - ${now.format('ll')}`, 
-    "creator"       : 'Pocket Tools',
-    "publisher"     : 'Pocket Tools',
-    "language"      : 'en-us',
-    "cover"         : coverPath,
-    "description"   : 'Articles fresh from your pocket',
-    "sections"      : [{
-      "title" : 'Articles',
-      "articles"  : articlesData
-    }]
-  };
-  
-  let created = await periodical.create(
-    bookData, 
-    {
-      targetFolder: '.',
-      filename: fileName,
-    });
-  
-  // Send with sendgrid
-  const lastPub = path.join(__dirname, `${fileName}.mobi`);
-  const tmpBookDir = path.join(__dirname, `book`);
-  let data = await readFile(lastPub);
-  SendGrid.setApiKey(process.env.SENDGRID_TOKEN!);
-  
-  const msg: MailData = {
-    to: email, 
-    bcc: process.env.FROM_EMAIL, // TODO: Remove
-    from: process.env.FROM_EMAIL!,
-    subject: 'Pocket Tools Delivery!',
-    text: 'Pocket Delivery!',
-    attachments: [
+    let created = await periodical.create(
+      bookData, 
       {
-        content: data.toString('base64'),
-        filename: 'PocketTools.mobi',
-        type: 'application/x-mobipocket-ebook',
-        disposition: 'attachment',
-        contentId: 'book'
-      },
-    ],
-  };
-  var response = await SendGrid.send(msg);
-  if (!(response[0].statusCode === 200)) return null; // TODO: Check if it is actually a 200
-
-  // Cleanup
-  cleanup();
-
-  return true;
+        targetFolder: '.',
+        filename: fileName,
+      });
+    
+    // Send with sendgrid
+    const lastPub = path.join(__dirname, '../', `${fileName}.mobi`);
+    const tmpBookDir = path.join(__dirname, '../', `book`);
+    let data = await readFile(lastPub);
+    
+    const msg: MailData = {
+      to: email, 
+      bcc: process.env.FROM_EMAIL, // TODO: Remove
+      from: process.env.FROM_EMAIL!,
+      subject: 'Pocket Tools Delivery!',
+      text: 'Pocket Delivery!',
+      attachments: [
+        {
+          content: data.toString('base64'),
+          filename: 'PocketTools.mobi',
+          type: 'application/x-mobipocket-ebook',
+          disposition: 'attachment',
+          contentId: 'book'
+        },
+      ],
+    };
+    sgMail.setApiKey(process.env.SENDGRID_TOKEN!);
+    var response = await sgMail.send(msg);
+    return (response[0].statusCode === 202);
+  } catch(err) {
+    console.error(err);
+  } finally {
+    cleanup();
+  }
+  return false;
 };
 
 function cleanup() {
-  const tmpBookDir = path.join(__dirname, `book`);
+  const tmpBookDir = path.join(__dirname, '../', `book`);
 
   if (fs.existsSync(tmpBookDir)) {
     fs.readdir(tmpBookDir, (err, files) => {
@@ -232,7 +231,7 @@ function cleanup() {
     // fs.rmdirSync(tmpBookDir);
   }
 
-  fs.unlinkSync(`${__dirname}/Edited_PocketToolsCover.jpg`);
+  // fs.unlinkSync(`${__dirname}/Edited_PocketToolsCover.jpg`);
   new Glob(`${__dirname}/*.mobi`, {}, (err, files)=>{
     for(let file of files) {
       console.log(`- Deleting ${file}`);

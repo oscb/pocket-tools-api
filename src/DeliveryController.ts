@@ -1,8 +1,8 @@
-import { Router, Request } from "express";
+import { Router } from "express";
 import passport from 'passport';
-import { DeliveryModel, DeliveryDocument } from "./Delivery";
-import { ExecuteQuery, SendDelivery } from "./DeliveryManager";
 import * as Pocket from 'pocket-promise';
+import { DeliveryDocument, DeliveryModel } from "./Delivery";
+import { ExecuteQuery, SendDelivery } from "./DeliveryManager";
 import { User, UserDocument } from "./User";
 
 export const router = Router();
@@ -14,6 +14,175 @@ router.get(
     let userDeliveries = await DeliveryModel.find(
       { user: req.user._id }).exec();
     res.status(200).send(userDeliveries);
+  }
+);
+
+router.get(
+  '/mailings/:sentid/:operation',
+  async (req, res) => {
+    let delivery: DeliveryDocument | null;
+    try {
+      delivery = await DeliveryModel.findOne(
+        { 'mailings._id' : req.params.sentid }, 
+        { 
+          'user': 1,
+          'mailings.$': 1 
+        }
+      ).populate('user').exec();
+    } catch {
+      return res.status(500).send("Error retrieving delivery");
+    }
+    
+    if (delivery == null) {
+      return res.status(500).send('There was a problem finding the delivery.');
+    }
+
+    for(let article of delivery.mailings[0].articles) {
+      const pocket = new Pocket({
+        consumer_key: process.env.POCKET_KEY, 
+        access_token: (delivery.user as User).token
+      });
+      let operations = req.params.operation.toLowerCase() === 'fav-and-archive' ? ['favorite', 'archive'] : [req.params.operation.toLowerCase()];
+      for (let op of operations) {
+        let resp;
+        switch(op)
+        {
+          case "archive":
+            resp = await pocket.archive({ item_id: article.pocketId });
+            break;
+          case "favorite":
+            resp = await pocket.favorite({ item_id: article.pocketId });
+            break;
+          default:
+            res.status(500).send(`Operation ${op} not supported`);
+        }
+        if (resp.status != 1) {
+          res.status(500).send('Archive failed! Try again later.');
+          return;
+        }
+      }
+    }
+    // TODO: Better Response for Kindle viz
+    return res.status(200).send(`Articles archived!`);
+  }
+);
+
+
+router.get(
+  '/articles/:articleid/:operation',
+  async (req, res) => {
+    let delivery: DeliveryDocument | null;
+    try {
+      delivery = await DeliveryModel.findOne(
+        { 'mailings.articles._id' : req.params.articleid }, 
+        { 
+          'user': 1,
+          'mailings.articles.$': 1 
+        }
+      ).populate('user').exec();
+    } catch {
+      return res.status(500).send("Error retrieving delivery");
+    }
+
+    // TODO: Validate operation
+    
+    if (delivery == null) {
+      return res.status(500).send('There was a problem finding the delivery.');
+    }
+    
+    const pocket = new Pocket({
+      consumer_key: process.env.POCKET_KEY, 
+      access_token: (delivery.user as User).token
+    });
+    let articleId = delivery.mailings[0].articles[0].pocketId;
+    let operations = req.params.operation.toLowerCase() === 'fav-and-archive' ? ['favorite', 'archive'] : [req.params.operation.toLowerCase()];
+    for (let op of operations) {
+      let resp;
+      switch(op)
+      {
+        case "archive":
+          resp = await pocket.archive({ item_id: articleId });
+          break;
+        case "favorite":
+          resp = await pocket.favorite({ item_id: articleId });
+          break;
+        default:
+          res.status(500).send(`Operation ${op} not supported`);
+      }
+      if (resp.status != 1) {
+        res.status(500).send('Archive failed! Try again later.');
+        return;
+      }
+    }
+    // TODO: Better Response for Kindle viz
+    return res.status(200).send(`Article ${req.params.operation}!`);
+  }
+);
+
+const SendAll = router.get(
+  '/sendAll',
+  async(req, res) => {
+    // TODO: This can only be called from Azure directly, use admin only account maybe? or check domain from request?
+    // 1. Transform current date into a time slot
+    const today = new Date();
+    const currentTimeslot = getTimeSlot(today);
+    const currentDate = today.getUTCDate(); // TODO: Handle February, where day 28 is going to be 30 for montlies
+    const currentDay = days[today.getUTCDay()];
+    // 2. Search for timeslot deliveries in DB
+    let userDeliveries = await DeliveryModel.find(
+      {
+        'active' : true, 
+        'time': timeslots[currentTimeslot].toLowerCase(),
+        $or: [
+          {'days': { exists: false }},
+          {'days': null },
+          { 'days' : {
+              $in : [ currentDay, currentDate ]
+          }},
+        ]
+        // TODO: Get list of users with credits available and filter them here
+        // 'user': {
+        //   $in: []
+        // }
+      }).exec();
+
+    console.log(userDeliveries);
+
+    // 3. Check if last delivery was sent > 12 hours ago
+    let pendingDeliveries: DeliveryDocument[] = [];
+    for(let delivery of userDeliveries) {
+      // TODO: Not sure if ordered already...
+      if (delivery.mailings.length > 0) {
+        const lastMail = delivery.mailings[0];
+        const timeSinceLast = today.getTime() - lastMail.datetime.getTime();
+        if ((timeSinceLast/(1000*60*60)) > 12) {
+          pendingDeliveries.push(delivery);
+        }
+      } else {
+        pendingDeliveries.push(delivery);
+      }
+    }
+
+    console.log(pendingDeliveries);
+    // 4. Send all deliveries
+    for(const delivery of pendingDeliveries) {
+      // 5. Remove 1 credit for users who have a delivery
+      try {
+        await delivery.populate('user').execPopulate();
+        const sent = await MakeDelivery(delivery, delivery.user as User);
+        if (sent) {
+          let user = delivery.user as UserDocument
+          user.credits -= 1;
+          let userSaved = await user.save();
+        }
+      } catch(e) {
+        // Just log the error and continue
+        console.error(e);
+      }
+    }
+    
+    // 6. Return list of deliveries sent
+    res.status(200).send(pendingDeliveries);
   }
 );
 
@@ -176,147 +345,45 @@ router.get(
     if(!isOwnDelivery(delivery, req.user)) {
       return res.status(401).send('Unauthorized');
     } 
-    let articles = await ExecuteQuery(req.user, delivery.query);
-    let savedArticles: any[] = []
-    for (let article of articles) {
-      savedArticles.push({
-        pocketId: article.item_id,
-        url: article.resolved_url
-      });
-    }
-    let n = delivery.mailings.push({
-      datetime: new Date(),
-      articles: savedArticles
-    });
-
-    savedArticles = delivery.mailings[n-1].articles;
-    for (let i = 0; i < savedArticles.length; i++) {
-      articles[i].id = savedArticles[i].id;
-    }
-
-    let sent = await SendDelivery(delivery.kindle_email, articles);
-    if (sent) {
-      let status = await delivery.save();
-      if (status) {
-        res.status(200).send("Delivery Sent!");
-        return;
+    try {
+      const sent = await MakeDelivery(delivery, req.user);
+      if (sent) {
+        let status = await delivery.save();
+        // TODO: Remove a credit from user
+        if (status) {
+          return res.status(200).send("Delivery Sent!");
+        }
       }
+    } catch(err) {
+      console.error(err);
+      return res.status(500).send(`Delivery Couldn't be sent! Error: ${err}`);
     }
     return res.status(500).send("Delivery Couldn't be sent!");
   }
 );
 
-router.get(
-  '/mailings/:sentid/:operation',
-  async (req, res) => {
-    let delivery: DeliveryDocument | null;
-    try {
-      delivery = await DeliveryModel.findOne(
-        { 'mailings._id' : req.params.sentid }, 
-        { 
-          'user': 1,
-          'mailings.$': 1 
-        }
-      ).populate('user').exec();
-    } catch {
-      return res.status(500).send("Error retrieving delivery");
-    }
-    
-    if (delivery == null) {
-      return res.status(500).send('There was a problem finding the delivery.');
-    }
-
-    for(let article of delivery.mailings[0].articles) {
-      const pocket = new Pocket({
-        consumer_key: process.env.POCKET_KEY, 
-        access_token: (delivery.user as User).token
-      });
-      let operations = req.params.operation.toLowerCase() === 'fav-and-archive' ? ['favorite', 'archive'] : [req.params.operation.toLowerCase()];
-      for (let op of operations) {
-        let resp;
-        switch(op)
-        {
-          case "archive":
-            resp = await pocket.archive({ item_id: article.pocketId });
-            break;
-          case "favorite":
-            resp = await pocket.favorite({ item_id: article.pocketId });
-            break;
-          default:
-            res.status(500).send(`Operation ${op} not supported`);
-        }
-        if (resp.status != 1) {
-          res.status(500).send('Archive failed! Try again later.');
-          return;
-        }
-      }
-    }
-    // TODO: Better Response for Kindle viz
-    return res.status(200).send(`Articles archived!`);
-  }
-);
-
-
-router.get(
-  '/articles/:articleid/:operation',
-  async (req, res) => {
-    let delivery: DeliveryDocument | null;
-    try {
-      delivery = await DeliveryModel.findOne(
-        { 'mailings.articles._id' : req.params.articleid }, 
-        { 
-          'user': 1,
-          'mailings.articles.$': 1 
-        }
-      ).populate('user').exec();
-    } catch {
-      return res.status(500).send("Error retrieving delivery");
-    }
-
-    // TODO: Validate operation
-    
-    if (delivery == null) {
-      return res.status(500).send('There was a problem finding the delivery.');
-    }
-    
-    const pocket = new Pocket({
-      consumer_key: process.env.POCKET_KEY, 
-      access_token: (delivery.user as User).token
+async function MakeDelivery(delivery: DeliveryDocument, user: User) {
+  let articles = await ExecuteQuery(user, delivery.query);
+  let savedArticles: any[] = []
+  for (let article of articles) {
+    savedArticles.push({
+      pocketId: article.item_id,
+      url: article.resolved_url
     });
-    let articleId = delivery.mailings[0].articles[0].pocketId;
-    let operations = req.params.operation.toLowerCase() === 'fav-and-archive' ? ['favorite', 'archive'] : [req.params.operation.toLowerCase()];
-    for (let op of operations) {
-      let resp;
-      switch(op)
-      {
-        case "archive":
-          resp = await pocket.archive({ item_id: articleId });
-          break;
-        case "favorite":
-          resp = await pocket.favorite({ item_id: articleId });
-          break;
-        default:
-          res.status(500).send(`Operation ${op} not supported`);
-      }
-      if (resp.status != 1) {
-        res.status(500).send('Archive failed! Try again later.');
-        return;
-      }
-    }
-    // TODO: Better Response for Kindle viz
-    return res.status(200).send(`Article ${req.params.operation}!`);
   }
-);
+  let n = delivery.mailings.push({
+    datetime: new Date(),
+    articles: savedArticles
+  });
 
-router.get(
-  '/sendAll',
-  async(req, res) => {
-    // 1. Transform current date into a time slot
-    // 2. Search for timeslot deliveries in DB
-    // 3. 
-    
+  savedArticles = delivery.mailings[n-1].articles;
+  for (let i = 0; i < savedArticles.length; i++) {
+    articles[i].id = savedArticles[i].id;
   }
-);
+
+  let sent = await SendDelivery(delivery.kindle_email, articles);
+  return sent;
+}
 
 function isOwnDelivery(delivery: DeliveryDocument, user: UserDocument): boolean {
   return (
@@ -327,21 +394,31 @@ function isOwnDelivery(delivery: DeliveryDocument, user: UserDocument): boolean 
 }
 
 const timeslots = [
-  '2:00',
-  '6:00',
-  '10:00',
-  '14:00',
-  '18:00',
-  '22:00'
+  'Midnight',
+  'Dawn',
+  'Morning',
+  'Noon',
+  'Afternoon',
+  'Evening',
 ]
 
-function getTimeSlot(currentTime) {
-  const nSlots = 6;
+const days = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday'
+]
+
+function getTimeSlot(currentTime: Date) {
+  const nSlots = timeslots.length;
   const startTimeSlot = 2;
   const timeSlotInterval = 4;
 
-  const hours = (currentTime.getHours() - startTimeSlot) % 24;
-  const minutes = currentTime.getHours();
+  const hours = (currentTime.getUTCHours() - startTimeSlot) % 24;
+  const minutes = currentTime.getUTCMinutes(); // Not counting seconds, no need to be that specific
 
   for (let i = 0; i < nSlots; i++) {
     let limit = i * timeSlotInterval;

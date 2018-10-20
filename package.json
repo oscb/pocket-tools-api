@@ -34,7 +34,6 @@
     "lodash": "^4.17.5",
     "method-override": "^2.3.10",
     "minimist": "^1.2.0",
-    "moment": "^2.22.0",
     "mongoose": "^5.0.15",
     "node-fetch": "^2.1.2",
     "node-readability": "^3.0.0",
@@ -54,9 +53,9 @@
     "utf8": "^3.0.0"
   },
   "scripts": {
-    "start": "nodemon watch",
+    "start": "tsc && node dist/server.js",
+    "debug": "nodemon --debug watch",
     "build": "tsc",
-    "serve": "node dist/server.js",
     "watch": "tsc -w"
   },
   "devDependencies": {
