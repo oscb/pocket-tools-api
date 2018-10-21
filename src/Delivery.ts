@@ -16,18 +16,18 @@ export interface Mailing {
 }
 
 export enum CountType {
-  Count = "Count",
-  Time = "Time"
+  Count,
+  Time
 }
 
 enum OrderBy {
-  Newest = "Newest",
-  Oldest = "Oldest"
+  Newest,
+  Oldest
 }
 
 enum Frequency {
-  Daily = "Daily",
-  Weekly = "Weekly"
+  Daily,
+  Weekly
 }
 
 export interface Query {
@@ -99,7 +99,7 @@ const DeliverySchema = new Schema({
     orderBy: {
       type: String,
       required: true,
-      enum: Object.keys(Frequency).map(x => Frequency[x]),
+      enum: Object.keys(OrderBy).map(x => OrderBy[x]),
     },
     domain: String,
     includedTags: [String],

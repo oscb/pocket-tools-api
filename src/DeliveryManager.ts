@@ -40,7 +40,7 @@ export const ExecuteQuery = async (user: User, query: Query) => {
 
   // TODO: Type Pocket Query
   let defaultQuery: any = {
-    sort: query.orderBy,
+    sort: query.orderBy.toString().toLowerCase(),
     // Needs to be complete because it cannot do the exclusion correctly with simple (doesn't contain tags)
     detailType: 'complete',
   };

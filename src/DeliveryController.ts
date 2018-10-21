@@ -132,7 +132,7 @@ const SendAll = router.get(
     let userDeliveries = await DeliveryModel.find(
       {
         'active' : true, 
-        'time': timeslots[currentTimeslot].toLowerCase(),
+        'time': timeslots[currentTimeslot],
         $or: [
           {'days': { exists: false }},
           {'days': null },
@@ -140,49 +140,49 @@ const SendAll = router.get(
               $in : [ currentDay, currentDate ]
           }},
         ]
-        // TODO: Get list of users with credits available and filter them here
-        // 'user': {
-        //   $in: []
-        // }
-      }).exec();
+        // TODO: [Optimization] Get list of users with credits available and filter them here
+      })
+      .populate('user') // TODO: [Optimization] Retrieve only what I need
+      .exec();
 
     console.log(userDeliveries);
 
     // 3. Check if last delivery was sent > 12 hours ago
-    let pendingDeliveries: DeliveryDocument[] = [];
+    let sentDeliveries: DeliveryDocument[] = [];
+    let users: { [id: string]: UserDocument; } = { };
     for(let delivery of userDeliveries) {
-      // TODO: Not sure if ordered already...
-      if (delivery.mailings.length > 0) {
-        const lastMail = delivery.mailings[0];
-        const timeSinceLast = today.getTime() - lastMail.datetime.getTime();
-        if ((timeSinceLast/(1000*60*60)) > 12) {
-          pendingDeliveries.push(delivery);
-        }
-      } else {
-        pendingDeliveries.push(delivery);
+      let user = delivery.user as UserDocument;
+      if (user.id in users) {
+        user = users[user.id];
       }
-    }
 
-    console.log(pendingDeliveries);
-    // 4. Send all deliveries
-    for(const delivery of pendingDeliveries) {
-      // 5. Remove 1 credit for users who have a delivery
-      try {
-        await delivery.populate('user').execPopulate();
-        const sent = await MakeDelivery(delivery, delivery.user as User);
-        if (sent) {
-          let user = delivery.user as UserDocument
-          user.credits -= 1;
-          let userSaved = await user.save();
+      // TODO: Not sure if ordered already...
+      if (user.credits > 0) {
+        if (delivery.mailings.length > 0) {
+          const lastMail = delivery.mailings[0];
+          const timeSinceLast = today.getTime() - lastMail.datetime.getTime();
+          // Not sending emails more than once every 12 
+          if ((timeSinceLast/(1000*60*60)) < 12) {
+            continue;
+          }
         }
-      } catch(e) {
-        // Just log the error and continue
-        console.error(e);
+        try {
+          const sent = await MakeDelivery(delivery, delivery.user as User);
+          if (sent) {
+            sentDeliveries.push(delivery);
+            let user = delivery.user as UserDocument;
+            user.credits -= 1;
+            let userSaved = await user.save();
+          }
+        } catch(e) {
+          // Just log the error and continue
+          console.error(e);
+        }
       }
     }
     
     // 6. Return list of deliveries sent
-    res.status(200).send(pendingDeliveries);
+    res.status(200).send(sentDeliveries);
   }
 );
 
@@ -381,6 +381,10 @@ async function MakeDelivery(delivery: DeliveryDocument, user: User) {
     articles[i].id = savedArticles[i].id;
   }
 
+  let saved = await delivery.save();
+  if (!saved) {
+    return false;
+  }
   let sent = await SendDelivery(delivery.kindle_email, articles);
   return sent;
 }
