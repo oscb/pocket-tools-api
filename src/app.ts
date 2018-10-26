@@ -28,15 +28,16 @@ passport.use(new bearer.Strategy(
       }
 
       // Test Pocket Token with a simple query
-      const pocket = new Pocket({
-        consumer_key: process.env.POCKET_KEY, 
-        access_token: token
-      });
-      let resp = await pocket.get({ count: 1 });
-      if (resp.error) {
-        console.log(resp.error);
-        return done(resp.error, false);
-      }
+      // Not sure if I wanna do this, might deplete all the queries
+      // const pocket = new Pocket({
+      //   consumer_key: process.env.POCKET_KEY, 
+      //   access_token: token
+      // });
+      // let resp = await pocket.get({ count: 1 });
+      // if (resp.error) {
+      //   console.log(resp.error);
+      //   return done(resp.error, false);
+      // }
 
       return done(
         null, 

@@ -47,10 +47,10 @@ export interface Delivery {
   query: Query;
   frequency: Frequency;
   time: string;
-  timezone: string;
-  day: string[];
+  timezone: number;
+  days?: string[];
   autoArchive: boolean;
-  mailings: Mailing[];
+  mailings?: Mailing[];
 }
 
 // Documents
@@ -116,12 +116,12 @@ const DeliverySchema = new Schema({
     required: true,
   },
   timezone: {
-    type: String,
+    type: Number,
     required: true,
   },
-  day: {
+  days: {
     type: [String],
-    required: true,
+    required: false,
   },
   autoArchive: {
     type: Boolean,

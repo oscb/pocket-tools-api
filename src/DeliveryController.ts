@@ -33,7 +33,11 @@ router.get(
       return res.status(500).send("Error retrieving delivery");
     }
     
-    if (delivery == null) {
+    if (delivery === null || delivery === undefined) {
+      return res.status(500).send('There was a problem finding the delivery.');
+    }
+
+    if(delivery.mailings === undefined) {
       return res.status(500).send('There was a problem finding the delivery.');
     }
 
@@ -86,7 +90,11 @@ router.get(
 
     // TODO: Validate operation
     
-    if (delivery == null) {
+    if (delivery === null || delivery === undefined) {
+      return res.status(500).send('There was a problem finding the delivery.');
+    }
+
+    if(delivery.mailings === undefined) {
       return res.status(500).send('There was a problem finding the delivery.');
     }
     
@@ -127,7 +135,7 @@ const SendAll = router.get(
     const today = new Date();
     const currentTimeslot = getTimeSlot(today);
     const currentDate = today.getUTCDate(); // TODO: Handle February, where day 28 is going to be 30 for montlies
-    const currentDay = days[today.getUTCDay()];
+    const currentDay = WeekDays[today.getUTCDay()]; // Days in JS start with sunday
     // 2. Search for timeslot deliveries in DB
     let userDeliveries = await DeliveryModel.find(
       {
@@ -158,7 +166,7 @@ const SendAll = router.get(
 
       // TODO: Not sure if ordered already...
       if (user.credits > 0) {
-        if (delivery.mailings.length > 0) {
+        if (delivery.mailings !== undefined && delivery.mailings.length > 0) {
           const lastMail = delivery.mailings[0];
           const timeSinceLast = today.getTime() - lastMail.datetime.getTime();
           // Not sending emails more than once every 12 
@@ -210,23 +218,20 @@ router.post(
   '/', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    let delivery = {
-      ...req.body,
-      active: true,
-      mailings: [],
-      user: req.user._id,
-      
-      // name: req.body.name,
-      // email: req.body.email,
-      // query: req.body.query, // TODO: Validate
-      // frequency: req.body.frequency, 
-      // time: req.body.time,
-      // day: req.body.day,
-      // timezone: req.body.timezone,
+    try {
+      let delivery = {
+        ...req.body,
+        active: true,
+        mailings: [],
+        user: req.user._id,
+      }
+      delivery = await DeliveryModel.create(delivery);
+      delivery = SanitizeDelivery(delivery);
+      return res.status(201).send(delivery);
+    } catch(e) {
+      console.error(e);
+      return res.status(500).send(e);
     }
-    delivery = await DeliveryModel.create(delivery);
-    delivery = SanitizeDelivery(delivery);
-    res.status(201).send(delivery);
   }
 );
 
@@ -371,6 +376,8 @@ async function MakeDelivery(delivery: DeliveryDocument, user: User) {
       url: article.resolved_url
     });
   }
+  delivery.mailings = (delivery.mailings !== undefined) ? delivery.mailings : [];
+
   let n = delivery.mailings.push({
     datetime: new Date(),
     articles: savedArticles
@@ -398,43 +405,30 @@ function isOwnDelivery(delivery: DeliveryDocument, user: UserDocument): boolean 
 }
 
 const timeslots = [
-  'Midnight',
-  'Dawn',
-  'Morning',
-  'Noon',
-  'Afternoon',
-  'Evening',
+  'Dawn', // 4:00
+  'Morning', // 8:00
+  'Noon', // 12:00
+  'Afternoon', // 16:00
+  'Evening', // 20:00
+  'Midnight', // 24:00
 ]
 
-const days = [
-  'Sunday',
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday'
-]
+// JS Date Sunday = 0
+enum WeekDays {
+  Sunday,
+  Monday,
+  Tuesday,
+  Wednesday,
+  Thursday,
+  Friday,
+  Saturday,
+}
 
 function getTimeSlot(currentTime: Date) {
   const nSlots = timeslots.length;
-  const startTimeSlot = 2;
-  const timeSlotInterval = 4;
-
-  const hours = (currentTime.getUTCHours() - startTimeSlot) % 24;
-  const minutes = currentTime.getUTCMinutes(); // Not counting seconds, no need to be that specific
-
-  for (let i = 0; i < nSlots; i++) {
-    let limit = i * timeSlotInterval;
-    if (hours < limit) {
-      if (hours === limit && minutes > 0) {
-        return i++;
-      } else {
-        return i;
-      }
-    }
-  }
-  return 0;
+  const timeSlotInterval = 24 / nSlots;
+  const hours = currentTime.getUTCHours();
+  return Math.floor(hours / timeSlotInterval) % nSlots;
 }
 
 export default router;

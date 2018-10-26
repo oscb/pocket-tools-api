@@ -1,7 +1,7 @@
-import * as agent from "superagent";
 import { Router } from "express";
 import passport from 'passport';
 import { User, UserModel, Subscriptions } from "./User";
+import * as agent from "superagent";
 
 export const router = Router();
 
@@ -12,26 +12,31 @@ router.get('/', async (req, res) => {
       consumer_key: process.env.POCKET_KEY,
       redirect_uri: redirect_url
   };
-  var resp = await fetch('https://getpocket.com/v3/oauth/request', 
-  { 
-      method: 'POST',
-      body:    JSON.stringify(payload),
-      // body: payload,
-      headers: { 
+  try {
+    let resp = await agent
+      .post('https://getpocket.com/v3/oauth/request')
+      .timeout(1000)
+      .set({ 
         'Content-Type': 'application/json',
         'X-Accept': 'application/json' 
-      },
-  });
-  if (resp.status === 200) {
-    let respBody = await resp.json();
-    res.status(200).send({
-      login_url: `https://getpocket.com/auth/authorize?request_token=${respBody.code}&redirect_uri=${redirect_url}`,
-      code: respBody.code
-    });
-  } else {
+      })
+      .send(payload);
+    if (resp.status === 200) {
+      let respBody = resp.body;
+      res.status(200).send({
+        login_url: `https://getpocket.com/auth/authorize?request_token=${respBody.code}&redirect_uri=${redirect_url}`,
+        code: respBody.code
+      });
+    } else {
+      res.status(500).send({
+        error: 'Couldn\'t connect to pocket.'
+      })
+    }
+  } catch(e) {
+    console.error(e);
     res.status(500).send({
-      error: 'Couldn\'t connect to pocket.'
-    })
+      error: `Couldn't connect to pocket. ${e}`
+    });
   }
 });
 
@@ -41,17 +46,18 @@ router.post('/', async (req, res) => {
       consumer_key: process.env.POCKET_KEY,
       code: req.body.code
   };
-  let resp = await fetch('https://getpocket.com/v3/oauth/authorize', 
-  { 
-      method: 'POST',
-      body:    JSON.stringify(payload),
-      headers: { 
-        'charset': 'UTF-8',
-        'Content-Type': 'application/json',
-        'X-Accept': 'application/json' 
-      },
-  }); 
-  let respBody = await resp.json();
+  
+  let resp = await agent
+    .post('https://getpocket.com/v3/oauth/authorize')
+    .timeout(1000)
+    .set({ 
+      'charset': 'UTF-8',
+      'Content-Type': 'application/json',
+      'X-Accept': 'application/json' 
+    })
+    .send(payload);
+
+  let respBody = resp.body;
 
   let user = await UserModel.findOne({'username': respBody.username}).exec();
   let hasProfile = true;
