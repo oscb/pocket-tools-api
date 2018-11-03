@@ -201,7 +201,10 @@ router.get(
     let delivery: DeliveryDocument | null;
     try {
       delivery = await DeliveryModel.findById(req.params.id).exec();
-    } catch {
+    } catch(e) {
+      if (e.name === 'CastError') {
+        return res.status(400).send("Invalid Id");
+      }
       return res.status(500).send("Error retrieving delivery");
     }
     if (delivery === null) {

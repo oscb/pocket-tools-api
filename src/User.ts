@@ -2,7 +2,7 @@ import { Document, Schema, model } from 'mongoose';
 
 const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
 
-const isKindleEmail = (email: string): boolean => {
+export const isKindleEmail = (email: string): boolean => {
   return emailRegex.test(String(email).toLowerCase()) && String(email).toLowerCase().endsWith('@kindle.com');
 }
 

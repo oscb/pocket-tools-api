@@ -1,5 +1,5 @@
 import { Document, Schema, model } from 'mongoose';
-import { User, UserDocument } from './User';
+import { User, UserDocument, isKindleEmail } from './User';
 import { ObjectId } from 'bson';
 
 
@@ -81,6 +81,10 @@ const DeliverySchema = new Schema({
   kindle_email: {
     type: String,
     required: true,
+    validate: {
+      validator: val => isKindleEmail(val),
+      msg: `{VALUE} not a valid kindle email`
+    }
   },
   active: {
     type: Boolean,
