@@ -106,7 +106,10 @@ const DeliverySchema = new Schema({
       enum: Object.keys(OrderBy).map(x => OrderBy[x]),
     },
     domain: String,
-    includedTags: [String],
+    includedTags: {
+      type: [String],
+      trim: true,
+    },
     excludedTags: [String],
     longformOnly: Boolean
   },

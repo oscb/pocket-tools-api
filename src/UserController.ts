@@ -61,7 +61,10 @@ router.put(
     let user = await UserModel.findByIdAndUpdate(
       req.params.id, 
       req.body, 
-      { new: false })
+      { 
+        new: false, 
+        runValidators: true 
+      })
       .exec();
     return res.status(200).send(user);
   }

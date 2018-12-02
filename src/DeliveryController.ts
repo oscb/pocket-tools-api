@@ -229,11 +229,27 @@ router.post(
         user: req.user._id,
       }
       delivery = await DeliveryModel.create(delivery);
-      delivery = SanitizeDelivery(delivery);
+      // delivery = SanitizeDelivery(delivery);
       return res.status(201).send(delivery);
     } catch(e) {
       console.error(e);
-      return res.status(500).send(e);
+      if (e.name === 'ValidationError') {
+        return res.status(400).send({
+          message: e.message,
+          errors: Object
+            .keys(e.errors)
+            .reduce(
+              (map, obj) => { 
+                map[obj] = e.errors[obj].message; 
+                return map 
+              }, 
+              {})
+        });
+      } else {
+        return res.status(500).send({
+          message: e.message
+        });
+      }
     }
   }
 );
@@ -256,18 +272,41 @@ router.put(
     } 
     // TODO: remove all things from body that shouldn't be updted
     delivery = {...delivery, ...req.body};
-    delivery = SanitizeDelivery(delivery);
+    // delivery = SanitizeDelivery(delivery);
 
-    delivery = await DeliveryModel.findByIdAndUpdate(req.params.id, req.body, { new: true }).exec();
-    return res.status(200).send(delivery);
+    try {
+      delivery = await DeliveryModel.findByIdAndUpdate(
+        req.params.id, req.body, 
+        { 
+          new: true, 
+          runValidators: true 
+        })
+        .exec();
+      return res.status(200).send(delivery);
+    } catch (e) {
+      console.error(e);
+      if (e.name === 'ValidationError') {
+        return res.status(400).send({
+          message: e.message,
+          errors: Object
+            .keys(e.errors)
+            .reduce((map, obj) => { 
+              map[obj] = e.errors[obj].message; 
+              return map }, 
+            {})
+        });
+      } else {
+        return res.status(500).send({
+          message: e.message
+        });
+      }
+    }
   }
 );
 
 // TODO: Move elsewhere 
 
 const SanitizeDelivery = (delivery) => {
-  // TODO: Verify emails
-  // TODO: Verify all other
   // Remove Empty tags
   if (delivery.query !== undefined) {
     if (delivery.query.includedTags !== undefined) {
