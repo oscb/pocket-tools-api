@@ -3,7 +3,6 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import passport from "passport";
 import bearer from "passport-http-bearer"; 
-import Pocket from 'pocket-promise';
 import dotenv from 'dotenv';
 import UserController from './UserController';
 import DeliveryController from './DeliveryController';

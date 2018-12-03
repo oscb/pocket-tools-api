@@ -116,7 +116,6 @@ export const ExecuteQuery = async (user: User, query: Query) => {
 
 export const SendDelivery = async (email: string, articles: any, ...opts: any[]) => {
   try {
-    // TODO: Generate links? How does ID comes?
     const contentTemplate = _.template(await getTemplate('article.html'));
   
     let articlesData: any = [];

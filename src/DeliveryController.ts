@@ -1,11 +1,12 @@
 import { Router } from "express";
 import passport from 'passport';
-import * as Pocket from 'pocket-promise';
-import { DeliveryDocument, DeliveryModel } from "./Delivery";
+import { DeliveryDocument, DeliveryModel, Article } from "./Delivery";
 import { ExecuteQuery, SendDelivery } from "./DeliveryManager";
 import { User, UserDocument } from "./User";
 
 export const router = Router();
+
+const Pocket  = require('pocket-promise');
 
 router.get(
   '/', 
@@ -178,9 +179,7 @@ const SendAll = router.get(
           const sent = await MakeDelivery(delivery, delivery.user as User);
           if (sent) {
             sentDeliveries.push(delivery);
-            let user = delivery.user as UserDocument;
-            user.credits -= 1;
-            let userSaved = await user.save();
+            await DecreaseCredit(delivery.user as UserDocument);
           }
         } catch(e) {
           // Just log the error and continue
@@ -381,7 +380,7 @@ router.get(
   async (req, res) => {
     let delivery: DeliveryDocument | null;
     try {
-      delivery = await DeliveryModel.findById({_id: req.params.id}).exec();
+      delivery = await DeliveryModel.findById({_id: req.params.id}).populate('user').exec();
     } catch {
       return res.status(500).send("Error retrieving delivery");
     }
@@ -395,11 +394,8 @@ router.get(
     try {
       const sent = await MakeDelivery(delivery, req.user);
       if (sent) {
-        let status = await delivery.save();
-        // TODO: Remove a credit from user
-        if (status) {
-          return res.status(200).send("Delivery Sent!");
-        }
+        await DecreaseCredit(delivery.user as UserDocument);
+        return res.status(200).send("Delivery Sent!");
       }
     } catch(err) {
       console.error(err);
@@ -425,6 +421,8 @@ async function MakeDelivery(delivery: DeliveryDocument, user: User) {
     articles: savedArticles
   });
 
+  // Adding the Saved ID to out articles object from pocket, 
+  // so that we can use this to fill the links correctly in the template
   savedArticles = delivery.mailings[n-1].articles;
   for (let i = 0; i < savedArticles.length; i++) {
     articles[i].id = savedArticles[i].id;
@@ -434,15 +432,40 @@ async function MakeDelivery(delivery: DeliveryDocument, user: User) {
   if (!saved) {
     return false;
   }
+
   let sent = await SendDelivery(delivery.kindle_email, articles);
+
+  if (sent && delivery.autoArchive) {
+    try {
+      const pocket = new Pocket({
+        consumer_key: process.env.POCKET_KEY, 
+        access_token: (delivery.user as User).token
+      });
+      for (let article of savedArticles) {
+        let articleStatus = await pocket.archive({ item_id: article.pocketId });
+        console.log(articleStatus);
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  }
+
   return sent;
+}
+
+async function DecreaseCredit(user: UserDocument) {
+
+  user.credits -= 1;
+  let userSaved = await user.save();
+  return userSaved;
 }
 
 function isOwnDelivery(delivery: DeliveryDocument, user: UserDocument): boolean {
   return (
     delivery !== undefined && 
     delivery !== null && 
-    delivery.user.toString() === user._id.toString()
+    (delivery.user.toString() === user._id.toString() || 
+    ((delivery.user as UserDocument)._id !== undefined && (delivery.user as UserDocument)._id.toString() === user._id.toString()))
     );
 }
 
