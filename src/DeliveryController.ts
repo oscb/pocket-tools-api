@@ -275,7 +275,8 @@ router.put(
 
     try {
       delivery = await DeliveryModel.findByIdAndUpdate(
-        req.params.id, req.body, 
+        req.params.id, 
+        req.body, 
         { 
           new: true, 
           runValidators: true 

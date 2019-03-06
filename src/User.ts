@@ -1,4 +1,5 @@
 import { Document, Schema, model } from 'mongoose';
+import Stripe = require('stripe');
 
 const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
 
@@ -13,6 +14,10 @@ export enum Subscriptions {
   Admin = "Admin"
 }
 
+export interface StripeData {
+  source: string;
+}
+
 export interface User {
   username: string;
   token: string;
@@ -21,6 +26,7 @@ export interface User {
   credits: number;
   email?: string;
   kindle_email?: string;
+  stripe_id?: string;
 }
 
 export interface UserDocument extends User, Document { }
@@ -58,6 +64,10 @@ const UserSchema = new Schema({
       validator: val => isKindleEmail(val),
       msg: `{VALUE} not a valid kindle email`
     }
+  },
+  stripe_id: {
+    type: String,
+    required: false,
   }
 })
 

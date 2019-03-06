@@ -1,19 +1,22 @@
 import express from "express";
 import cors from 'cors';
 import bodyParser from 'body-parser';
+// Load dot env first!
+import dotenv from 'dotenv';
+let configs = dotenv.config();
+console.log(configs);
+
 import passport from "passport";
 import bearer from "passport-http-bearer"; 
-import dotenv from 'dotenv';
 import UserController from './UserController';
 import DeliveryController from './DeliveryController';
 import AuthController from './AuthController';
+import SubscriptionController from './SubscriptionController';
 import { UserModel, Subscriptions } from './User';
 import mongoose from 'mongoose';
 
-// TODO: Config
-mongoose.connect('mongodb://localhost/PocketTools');
+mongoose.connect(process.env.MONGODB_HOST || 'mongodb://localhost/PocketTools');
 
-dotenv.config();
 
 passport.use(new bearer.Strategy(
   async (token, done) => {
@@ -61,5 +64,6 @@ App.use(passport.initialize());
 App.use('/users', UserController);
 App.use('/deliveries', DeliveryController);
 App.use('/auth', AuthController);
+App.use('/subscriptions', SubscriptionController);
 
 export default App;

@@ -189,7 +189,6 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
     
     const msg: MailData = {
       to: email, 
-      bcc: process.env.FROM_EMAIL, // TODO: Remove
       from: process.env.FROM_EMAIL!,
       subject: 'Pocket Tools Delivery!',
       text: 'Pocket Delivery!',
