@@ -44,7 +44,7 @@ router.post(
       active: false,
       credits: 5,
     });
-    if (!onlyPublicSubscriptions(user, req.user)) {
+    if (!isPublicSubscriptionsOrSuperUser(user, req.user)) {
       return res.status(401).send({error: "Invalid subscription!"});
     }
     const customer = await stripe.customers.create({
@@ -110,9 +110,10 @@ router.put(
     if (userData.subscription !== null) {
       const stripe_id = user.stripe_id!;
 
-      // TODO: User can select the same subscription they had before if special
-      if (!onlyPublicSubscriptions(userData as User, req.user)) {
-        return res.status(401).send({error: "Invalid subscription!"});
+      if (userData.subscription !== req.user.subscription && !isPublicSubscriptionsOrSuperUser(userData as User, req.user)) {
+        return res.status(401).send({
+          error: "Invalid subscription!"
+        });
       }
 
       let stripePlan = await getStripePlan(userData.subscription!.toString());
@@ -129,7 +130,7 @@ router.put(
               source: req.body.stripe_token.id
             });
           } else {
-            if (stripePlan.amount === 0 && stripeUser.sources !== undefined && stripeUser.default_source !== undefined) {
+            if (stripePlan.amount === 0 && stripeUser.sources !== undefined && stripeUser.default_source !== undefined && stripeUser.default_source !== null) {
                 await stripe.customers.deleteSource(stripeUser.id, <string>stripeUser.default_source!);
             }
           }
@@ -139,7 +140,7 @@ router.put(
             let subscription = stripeUser.subscriptions.data[0];
             if (subscription.plan.nickname !== userData.subscription!) {
               // TODO: Check if the subscription in Stripe requires updating
-              let striperesp = await stripe.subscriptions.update(subscription.id, {
+              await stripe.subscriptions.update(subscription.id, {
                 cancel_at_period_end: false,
                 items: [{
                   plan: stripePlan.id,
@@ -149,11 +150,10 @@ router.put(
                   deleted: true
                 }]
               });
-              console.log(striperesp);
             }
 
           } else {
-            let striperesp = await stripe.subscriptions.create({
+            await stripe.subscriptions.create({
               customer: stripe_id,
               items: [
                 {
@@ -161,7 +161,6 @@ router.put(
                 }
               ],
             });
-            console.log(striperesp);
           }
           user.subscription = userData.subscription!;
         } catch (e) {
@@ -207,7 +206,7 @@ function isSelf(req: Request) {
   return req.user._id !== req.params.id;
 }
 
-function onlyPublicSubscriptions(userToChange: User, currentUser: User) {
+function isPublicSubscriptionsOrSuperUser(userToChange: User, currentUser: User) {
   // Only admins can set a user to a Subscription that isn't free nor premium
   return (
     isSuperUser(currentUser) ||
