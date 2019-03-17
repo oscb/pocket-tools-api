@@ -44,6 +44,7 @@
     "passport-pocket": "^1.0.0",
     "pocket-promise": "^1.1.0",
     "readability": "mozilla/readability",
+    "request": "^2.88.0",
     "rimraf": "^2.6.3",
     "sanitize-html": "^1.20.0",
     "showdown": "^1.9.0",
