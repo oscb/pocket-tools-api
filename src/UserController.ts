@@ -138,7 +138,7 @@ router.put(
           // Create or Update the subscription
           if (stripeUser.subscriptions.data.length > 0) {
             let subscription = stripeUser.subscriptions.data[0];
-            if (subscription.plan.nickname !== userData.subscription!) {
+            if (subscription.plan !== undefined && subscription.plan !== null && subscription.plan.nickname !== userData.subscription!) {
               // TODO: Check if the subscription in Stripe requires updating
               await stripe.subscriptions.update(subscription.id, {
                 cancel_at_period_end: false,
