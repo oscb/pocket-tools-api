@@ -12,6 +12,7 @@ import UserController from './UserController';
 import DeliveryController from './DeliveryController';
 import AuthController from './AuthController';
 import SubscriptionController from './SubscriptionController';
+import PaymentProcessorController from './PaymentProcessorController';
 import { UserModel, Subscriptions } from './User';
 import mongoose from 'mongoose';
 
@@ -21,7 +22,6 @@ mongoose.connect(process.env.MONGODB_HOST || 'mongodb://localhost/PocketTools');
 passport.use(new bearer.Strategy(
   async (token, done) => {
     try {
-      // TODO: Validate that user can auth to pocket?
       let user = await UserModel.findOne({ token: token });
       if (!user) 
       { 
@@ -59,6 +59,8 @@ passport.use(new bearer.Strategy(
 const App = express();
 App.use(cors());
 App.use(bodyParser.urlencoded({ extended: true }));
+// Webhooks need to be before 
+App.use('/webhooks/stripe', PaymentProcessorController);
 App.use(bodyParser.json());
 App.use(passport.initialize());
 App.use('/users', UserController);

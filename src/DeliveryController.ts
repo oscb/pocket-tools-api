@@ -90,7 +90,6 @@ router.get(
     }
 
     // TODO: Validate operation
-    
     if (delivery === null || delivery === undefined) {
       return res.status(500).send('There was a problem finding the delivery.');
     }
@@ -128,6 +127,7 @@ router.get(
   }
 );
 
+// TODO: This requires my account due to auth... uhmmm...
 const SendAll = router.get(
   '/sendAll',
   async(req, res) => {

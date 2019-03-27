@@ -108,64 +108,23 @@ router.put(
 
     // Updating Subscription requires communicating to Stripe, so we do that here only if we actually got a subscription field
     if (userData.subscription !== null) {
-      const stripe_id = user.stripe_id!;
-
       if (userData.subscription !== req.user.subscription && !isPublicSubscriptionsOrSuperUser(userData as User, req.user)) {
         return res.status(401).send({
           error: "Invalid subscription!"
         });
       }
 
-      let stripePlan = await getStripePlan(userData.subscription!.toString());
-      if (stripePlan === null) {
-        return res.status(400).send({ error: `${userData.subscription} is not a valid subscription.` });
-      }
-
-      if (userData.subscription !== null) {
-        try {
-          // Update the User first to add the new card
-          let stripeUser = await stripe.customers.retrieve(stripe_id);
-          if (req.body.stripe_token !== undefined) {
-            await stripe.customers.update(stripe_id, {
-              source: req.body.stripe_token.id
-            });
-          } else {
-            if (stripePlan.amount === 0 && stripeUser.sources !== undefined && stripeUser.default_source !== undefined && stripeUser.default_source !== null) {
-                await stripe.customers.deleteSource(stripeUser.id, <string>stripeUser.default_source!);
-            }
-          }
-
-          // Create or Update the subscription
-          if (stripeUser.subscriptions.data.length > 0) {
-            let subscription = stripeUser.subscriptions.data[0];
-            if (subscription.plan !== undefined && subscription.plan !== null && subscription.plan.nickname !== userData.subscription!) {
-              // TODO: Check if the subscription in Stripe requires updating
-              await stripe.subscriptions.update(subscription.id, {
-                cancel_at_period_end: false,
-                items: [{
-                  plan: stripePlan.id,
-                }, 
-                {
-                  id: subscription.items.data[0].id,
-                  deleted: true
-                }]
-              });
-            }
-
-          } else {
-            await stripe.subscriptions.create({
-              customer: stripe_id,
-              items: [
-                {
-                  plan: stripePlan.id
-                }
-              ],
-            });
-          }
-          user.subscription = userData.subscription!;
-        } catch (e) {
-          return res.status(400).send({error: e.message});
+      try {
+        let stripePlan = await getStripePlan(userData.subscription!.toString());
+        if (stripePlan === null) {
+          return res.status(400).send({ error: `${userData.subscription} is not a valid subscription.` });
         }
+        if (userData.subscription !== null) {
+          const stripeToken = req.body.stripe_token !== undefined ? req.body.stripe_token.id : null;
+          await updateSubscription(user, userData.subscription!, stripeToken);
+        }
+      } catch (e) {
+        return res.status(400).send({error: e.message});
       }
     }
 
@@ -212,6 +171,54 @@ function isPublicSubscriptionsOrSuperUser(userToChange: User, currentUser: User)
     isSuperUser(currentUser) ||
     userToChange.subscription.toString() === Subscriptions.Free.toString() || 
     userToChange.subscription.toString() === Subscriptions.Premium.toString());
+}
+
+export async function updateSubscription(user: UserDocument, subscriptionPlan: Subscriptions, stripeToken: any | null = null) {
+  const stripe_id = user.stripe_id!;
+  
+  let stripePlan = await getStripePlan(subscriptionPlan.toString());
+  if (stripePlan === null) {
+    throw `${subscriptionPlan} is not a valid subscription.`;
+  }
+  // Update the User first to add the new card
+  let stripeUser = await stripe.customers.retrieve(stripe_id);
+  if (stripeToken !== null) {
+    await stripe.customers.update(stripe_id, {
+      source: stripeToken
+    });
+  } else {
+    if (stripePlan.amount === 0 && stripeUser.sources !== undefined && stripeUser.default_source !== undefined && stripeUser.default_source !== null) {
+        await stripe.customers.deleteSource(stripeUser.id, <string>stripeUser.default_source!);
+    }
+  }
+
+  // Create or Update the subscription
+  if (stripeUser.subscriptions.data.length > 0) {
+    let subscription = stripeUser.subscriptions.data[0];
+    if (subscription.plan !== undefined && subscription.plan !== null && subscription.plan.nickname !== subscriptionPlan) {
+      // TODO: Check if the subscription in Stripe requires updating
+      await stripe.subscriptions.update(subscription.id, {
+        cancel_at_period_end: false,
+        items: [{
+          plan: stripePlan.id,
+        }, 
+        {
+          id: subscription.items.data[0].id,
+          deleted: true
+        }]
+      });
+    }
+  } else {
+    await stripe.subscriptions.create({
+      customer: stripe_id,
+      items: [
+        {
+          plan: stripePlan.id
+        }
+      ],
+    });
+  }
+  user.subscription = subscriptionPlan;
 }
 
 export default router;
