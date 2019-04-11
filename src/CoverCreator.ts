@@ -1,17 +1,18 @@
-const { createCanvas, loadImage } = require('canvas');
 import * as path from 'path';
 import * as fs from 'fs';
+import { createCanvas, loadImage, registerFont } from 'canvas';
+
+registerFont(path.join(__dirname, '../assets/', 'AlegreyaSans-Regular.ttf'), { family: 'Alegreya Sans' });
 
   // TODO: If deploying this need to
   // - Bundle the font
   // - Verify this actually works! since it requires cairo installed locally
-export const createCover = async (message: string): Promise<string> => {
-  const fileOutput = 'Edited_PocketToolsCover.jpg';
+export const createCover = async (message: string, outputFile: string): Promise<string> => {
   // Creating a cover programmatically
   const canvas = createCanvas(938, 1500);
   const ctx = canvas.getContext('2d');
 
-  var image = await loadImage(path.join(__dirname, 'PocketToolsCover.jpg'));
+  var image = await loadImage(path.join(__dirname, '../assets/', 'PocketToolsCover.jpg'));
   ctx.drawImage(image, 0, 0, 938, 1500);
 
   // Write Date
@@ -27,13 +28,15 @@ export const createCover = async (message: string): Promise<string> => {
   ctx.lineTo(520, 280);
   ctx.stroke();
 
-  let stream = canvas.jpegStream({
-      bufsize: 4096 // output buffer size in bytes, default: 4096
-    , quality: 75 // JPEG quality (0-100) default: 75
-    , progressive: true // true for progressive compression, default: false
+  let stream = canvas.createJPEGStream({
+    quality: 50, // JPEG quality (0-100) default: 75
+    progressive: true // true for progressive compression, default: false
   });
-  let coverPath = path.join(__dirname, fileOutput);
-  let jpg = fs.createWriteStream(coverPath);
-  await stream.pipe(jpg);
-  return fileOutput;
+
+  return new Promise<string>((resolve, reject) => {
+    let jpg = fs.createWriteStream(outputFile);
+    stream.pipe(jpg);
+    jpg.on('finish', x => resolve(outputFile));
+    jpg.on('error', x => reject('Error saving cover'));
+  })
 }

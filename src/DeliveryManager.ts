@@ -9,6 +9,7 @@ import sgMail from "@sendgrid/mail"
 import { Glob } from 'glob';
 import dayjs from 'dayjs';
 import { MailData } from '@sendgrid/helpers/classes/mail';
+import { createCover } from './CoverCreator';
 
 const readability = require('readability');
 const periodical = require('kindle-periodical');
@@ -19,12 +20,33 @@ const readFile = promisify(fs.readFile);
 const MAX_QUERIES = 5;
 const WPM = 230;
 
+const getArticleTemplate = (() => {
+  let articleTemplate: _.TemplateExecutor;
+  return async () => {
+    if (articleTemplate === undefined) {
+      articleTemplate = _.template(await getTemplate('article.html'));
+    }
+    return articleTemplate;
+  }
+})();
+
 function getTemplate (filename) {
   let filePath = path.join(__dirname, '../', 'templates', filename);
   
   return readFile(filePath, {
     encoding: 'UTF-8'
   });
+}
+
+function createDeliveryDirectory(): string {
+  // TODO: Not the best but enough for now
+  const dirName = path.resolve(path.join(__dirname, '../', `delivery-${Math.floor((Math.random() * 100000) + 1).toString()}`));
+  if (fs.existsSync(dirName)){
+    // Retry until we can have a directory 
+    return createDeliveryDirectory();
+  }
+  fs.mkdirSync(dirName);
+  return dirName;
 }
 
 export const ExecuteQuery = async (user: User, query: Query) => {
@@ -115,9 +137,10 @@ export const ExecuteQuery = async (user: User, query: Query) => {
 };
 
 export const SendDelivery = async (email: string, articles: any, ...opts: any[]) => {
+  let deliveryDir: string | null = null;
   try {
-    const contentTemplate = _.template(await getTemplate('article.html'));
-  
+    deliveryDir = createDeliveryDirectory();
+    const contentTemplate = await getArticleTemplate();
     let articlesData: any = [];
     for(let article of articles) {
       let parsedArticle;
@@ -155,13 +178,13 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
       });
     }
     // TODO: Add extra page for Archive all
-    const coverPath = path.join(__dirname, '../', 'PocketToolsCover.jpg');
-    // TODO: Can Use the CoverCreator to create custom covers, but might not work deployed in a Function env
     const now = dayjs();
+    // const coverPath = path.join(__dirname, '../assets/', 'PocketToolsCover.jpg');
+    const coverPath = await createCover(now.format('YY-MM-DD'), path.join(deliveryDir, 'EditedCover.jpg'));
     // Create Periodical
     const fileName = `PocketDelivery[${now.format('YY-MM-DD')}]`;
     const bookData = {
-      "title"         : `Pocket Delivery - ${now.format('ll')}`, 
+      "title"         : `Pocket Delivery - ${now.format('YY-MM-DD')}`, 
       "creator"       : 'Pocket Tools',
       "publisher"     : 'Pocket Tools',
       "language"      : 'en-us',
@@ -172,15 +195,15 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
         "articles"  : articlesData
       }]
     };
-    await periodical.create(
-      bookData, 
+    await periodical.create(bookData, 
       {
-        targetFolder: '.',
+        cleanup: false,
+        targetFolder: deliveryDir,
         filename: fileName,
       });
     
     // Send with sendgrid
-    const lastPub = path.join(__dirname, '../', `${fileName}.mobi`);
+    const lastPub = path.join(deliveryDir, `${fileName}.mobi`);
     let data = await readFile(lastPub);
     const msg: MailData = {
       to: email, 
@@ -199,36 +222,26 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
     };
     sgMail.setApiKey(process.env.SENDGRID_TOKEN!);
     var response = await sgMail.send(msg);
+    console.log("✓ Delivery sent!");
     return (response[0].statusCode === 202);
   } catch(e) {
     console.error(e);
     throw 'Cannot deliver email!';
   } finally {
-    cleanup();
+    cleanup(deliveryDir);
   }
 };
 
-function cleanup() {
-  const tmpBookDir = path.join(__dirname, '../', `book`);
-
-  if (fs.existsSync(tmpBookDir)) {
-    fs.readdir(tmpBookDir, (err, files) => {
+function cleanup(dir: string | null) {
+  if (dir !== null && fs.existsSync(dir)) {
+    fs.readdir(dir, (err, files) => {
       if(!err) {
         for(let file of files) {
           console.log(`- Deleting ${file}`);
-          fs.unlinkSync(path.join(tmpBookDir,file));
+          fs.unlinkSync(path.join(dir,file));
         }
+        fs.rmdirSync(dir);
       }
     });
-    // This is throwing an error that folder isn't empty, even if it is.
-    // fs.rmdirSync(tmpBookDir);
   }
-
-  // fs.unlinkSync(`${__dirname}/Edited_PocketToolsCover.jpg`);
-  new Glob(`${__dirname}/*.mobi`, {}, (err, files)=>{
-    for(let file of files) {
-      console.log(`- Deleting ${file}`);
-      fs.unlinkSync(file);
-    }
-  });
 }

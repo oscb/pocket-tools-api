@@ -13,7 +13,7 @@ import { UserModel } from './User';
 import UserController from './UserController';
 
 
-mongoose.connect(process.env.MONGODB_HOST || 'mongodb://localhost/PocketTools');
+mongoose.connect(process.env.MONGODB_HOST || 'mongodb://Luna.local/PocketTools');
 
 
 passport.use(new bearer.Strategy(
