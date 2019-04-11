@@ -136,8 +136,6 @@ router.get(
       .populate('user') // TODO: [Optimization] Retrieve only what I need
       .exec();
 
-    console.log(userDeliveries);
-
     // 3. Check if last delivery was sent > 12 hours ago
     let sentDeliveries: DeliveryDocument[] = [];
     let users: { [id: string]: UserDocument; } = { };
@@ -339,7 +337,11 @@ router.get(
     }  
     if(!isOwnDelivery(delivery, req.user)) {
       return res.status(401).send('Unauthorized');
-    } 
+    }
+    if(req.user.credits <= 0) {
+      return res.status(400).send('No more credits available!');
+    }
+    
     try {
       const sent = await MakeDelivery(delivery, req.user);
       if (sent) {

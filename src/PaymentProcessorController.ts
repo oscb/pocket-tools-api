@@ -40,7 +40,7 @@ router.post(
       let plan: Stripe.plans.IPlan = event.data.object.lines.data[0].plan;
       let creditsPerMonth = parseInt(plan.metadata.CreditsPerMonth);
       if (creditsPerMonth > 0) {
-        user.credits += creditsPerMonth;
+        user.credits = creditsPerMonth;
       }
       await user.save();
       return true;
