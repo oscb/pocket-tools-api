@@ -2,6 +2,7 @@ import { Router } from "express";
 import passport from 'passport';
 import { User, UserModel, Subscriptions } from "./User";
 import * as agent from "superagent";
+import { Constants } from "./Constants";
 
 export const router = Router();
 
@@ -60,14 +61,13 @@ router.post('/', async (req, res) => {
   let respBody = resp.body;
 
   let user = await UserModel.findOne({'username': respBody.username}).exec();
-  let hasProfile = true;
   // Create user in DB if any
   if (!user) {
     user = await UserModel.create({
       username: respBody.username,
       active: true,
       token: respBody.access_token,
-      credits: 10, // TODO: Default
+      credits: Constants.DefaultUserCredits,
       subscription: Subscriptions.Free
     } as User);
   } 
@@ -81,15 +81,5 @@ router.post('/', async (req, res) => {
     user: user
   });
 });
-
-// Endpoint just to verify Token is still valid
-
-router.get(
-  '/verify', 
-  passport.authenticate('bearer', { session: false }), 
-  async (req, res) => {
-    res.status(200).send();
-  }
-);
 
 export default router;

@@ -154,9 +154,7 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
         "content": contents,
       });
     }
-  
     // TODO: Add extra page for Archive all
-  
     const coverPath = path.join(__dirname, '../', 'PocketToolsCover.jpg');
     // TODO: Can Use the CoverCreator to create custom covers, but might not work deployed in a Function env
     const now = dayjs();
@@ -174,8 +172,7 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
         "articles"  : articlesData
       }]
     };
-    
-    let created = await periodical.create(
+    await periodical.create(
       bookData, 
       {
         targetFolder: '.',
@@ -184,9 +181,7 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
     
     // Send with sendgrid
     const lastPub = path.join(__dirname, '../', `${fileName}.mobi`);
-    const tmpBookDir = path.join(__dirname, '../', `book`);
     let data = await readFile(lastPub);
-    
     const msg: MailData = {
       to: email, 
       from: process.env.FROM_EMAIL!,
@@ -205,12 +200,12 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
     sgMail.setApiKey(process.env.SENDGRID_TOKEN!);
     var response = await sgMail.send(msg);
     return (response[0].statusCode === 202);
-  } catch(err) {
-    console.error(err);
+  } catch(e) {
+    console.error(e);
+    throw 'Cannot deliver email!';
   } finally {
     cleanup();
   }
-  return false;
 };
 
 function cleanup() {

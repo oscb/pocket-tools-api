@@ -4,7 +4,6 @@ import { ObjectId } from 'bson';
 
 
 // Interfaces
-
 export interface Article {
   pocketId: string;
   url: string;
@@ -60,7 +59,6 @@ export interface QueryDocument extends Query, Document { }
 export interface DeliveryDocument extends Delivery, Document { }
 
 // Schemas
-
 const ArticleSchema = new Schema({
   pocketId: String,
   url: String,
@@ -110,7 +108,10 @@ const DeliverySchema = new Schema({
       type: [String],
       trim: true,
     },
-    excludedTags: [String],
+    excludedTags: {
+      type: [String],
+      trim: true,
+    },
     longformOnly: Boolean
   },
   frequency: {

@@ -3,6 +3,7 @@ import passport from 'passport';
 import { User, UserModel, Subscriptions, StripeData, UserDocument } from './User';
 import Stripe = require('stripe');
 import { getStripePlan } from "./SubscriptionController";
+import { DeliveryModel } from "./Delivery";
 
 export const router = Router();
 const stripe = new Stripe(process.env.STRIPE_TOKEN!);
@@ -47,14 +48,7 @@ router.post(
     if (!isPublicSubscriptionsOrSuperUser(user, req.user)) {
       return res.status(401).send({error: "Invalid subscription!"});
     }
-    const customer = await stripe.customers.create({
-      email: user.email,
-      source: data.source,
-      metadata: {
-        'user_id': user.id,
-        'pocket_user': user.username
-      },
-    });
+    const customer = await CreateStripeCustomer(user, data.source);
     user.stripe_id = customer.id;
 
     try {
@@ -121,6 +115,10 @@ router.put(
         }
         if (userData.subscription !== null) {
           const stripeToken = req.body.stripe_token !== undefined ? req.body.stripe_token.id : null;
+          if (!!!user.stripe_id) {
+            const customer = await CreateStripeCustomer(user);
+            user.stripe_id = customer.id;
+          }
           await updateSubscription(user, userData.subscription!, stripeToken);
         }
       } catch (e) {
@@ -148,13 +146,25 @@ router.delete(
   '/:id', 
   passport.authenticate('bearer', { session: false }), 
   async (req, res) => {
-    if (!isSelf(req)) return res.status(401).send();
-    let user = await UserModel.findByIdAndRemove(req.params.id).exec();
-    // TODO: Remove Deliveries too
-    // TODO: Cancel plan
+    if (!isSuperUser(req.user) && !isSelf(req)) return res.status(401).send();
+    await DeliveryModel.remove({ user: req.user._id }).exec();
+    // Stripe cancels all subscriptions on removal!
+    await stripe.customers.del(req.user.stripe_id);
+    await UserModel.findByIdAndRemove(req.user.id).exec();
     return res.status(200).send();
   }
 );
+
+async function CreateStripeCustomer(user: UserDocument, source?: string) {
+  return await stripe.customers.create({
+    email: user.email,
+    source: source,
+    metadata: {
+      'user_id': user.id,
+      'pocket_user': user.username
+    },
+  });
+}
 
 // TODO: Move this into the user class?
 function isSuperUser(user: User) {
@@ -196,7 +206,6 @@ export async function updateSubscription(user: UserDocument, subscriptionPlan: S
   if (stripeUser.subscriptions.data.length > 0) {
     let subscription = stripeUser.subscriptions.data[0];
     if (subscription.plan !== undefined && subscription.plan !== null && subscription.plan.nickname !== subscriptionPlan) {
-      // TODO: Check if the subscription in Stripe requires updating
       await stripe.subscriptions.update(subscription.id, {
         cancel_at_period_end: false,
         items: [{

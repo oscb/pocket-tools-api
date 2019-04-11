@@ -1,20 +1,17 @@
-import express from "express";
-import cors from 'cors';
-import bodyParser from 'body-parser';
 // Load dot env first!
-import dotenv from 'dotenv';
-let configs = dotenv.config();
-console.log(configs);
-
-import passport from "passport";
-import bearer from "passport-http-bearer"; 
-import UserController from './UserController';
-import DeliveryController from './DeliveryController';
-import AuthController from './AuthController';
-import SubscriptionController from './SubscriptionController';
-import PaymentProcessorController from './PaymentProcessorController';
-import { UserModel, Subscriptions } from './User';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import express from "express";
 import mongoose from 'mongoose';
+import passport from "passport";
+import bearer from "passport-http-bearer";
+import AuthController from './AuthController';
+import DeliveryController from './DeliveryController';
+import PaymentProcessorController from './PaymentProcessorController';
+import SubscriptionController from './SubscriptionController';
+import { UserModel } from './User';
+import UserController from './UserController';
+
 
 mongoose.connect(process.env.MONGODB_HOST || 'mongodb://localhost/PocketTools');
 
@@ -25,7 +22,6 @@ passport.use(new bearer.Strategy(
       let user = await UserModel.findOne({ token: token });
       if (!user) 
       { 
-        console.log("no user");
         return done(null, false); 
       }
 
@@ -48,7 +44,6 @@ passport.use(new bearer.Strategy(
           scope: 'read', 
           message: 'Hi' 
         });
-      
     } catch (error) {
       console.log(error);
       return done(error);
@@ -59,7 +54,7 @@ passport.use(new bearer.Strategy(
 const App = express();
 App.use(cors());
 App.use(bodyParser.urlencoded({ extended: true }));
-// Webhooks need to be before 
+// Webhooks need to be before we initialize the passport to prevent having that auth
 App.use('/webhooks/stripe', PaymentProcessorController);
 App.use(bodyParser.json());
 App.use(passport.initialize());

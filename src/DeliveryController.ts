@@ -1,12 +1,41 @@
 import { Router } from "express";
 import passport from 'passport';
-import { DeliveryDocument, DeliveryModel, Article } from "./Delivery";
+import { Article, DeliveryDocument, DeliveryModel } from "./Delivery";
 import { ExecuteQuery, SendDelivery } from "./DeliveryManager";
 import { User, UserDocument } from "./User";
-
 export const router = Router();
+const Pocket = require('pocket-promise');
 
-const Pocket  = require('pocket-promise');
+enum ArticleOperations {
+  Favorite = 'favorite',
+  Archive = 'archive',
+  FavAndArchive = 'fav-and-archive'
+}
+
+const ArticleMarkers = new Map<ArticleOperations, string>([
+  [ArticleOperations.Favorite, '★'],
+  [ArticleOperations.Archive, '✔'],
+]);
+
+const timeslots = [
+  'Dawn', // 4:00
+  'Morning', // 8:00
+  'Noon', // 12:00
+  'Afternoon', // 16:00
+  'Evening', // 20:00
+  'Midnight', // 24:00
+]
+
+// JS Date Sunday = 0
+enum WeekDays {
+  Sunday,
+  Monday,
+  Tuesday,
+  Wednesday,
+  Thursday,
+  Friday,
+  Saturday,
+}
 
 router.get(
   '/', 
@@ -34,41 +63,19 @@ router.get(
       return res.status(500).send("Error retrieving delivery");
     }
     
-    if (delivery === null || delivery === undefined) {
+    if (!!!delivery || !!!delivery.mailings) {
       return res.status(500).send('There was a problem finding the delivery.');
     }
 
-    if(delivery.mailings === undefined) {
-      return res.status(500).send('There was a problem finding the delivery.');
+    const articleOperations = Promise.all(delivery.mailings[0].articles
+      .map(article => HandleArticleOperation(req.params.operation, (delivery!.user as User).token, article)));
+    try {
+      const results = await articleOperations;
+      const flattenedResults = results.reduce((ops:string[], cur:string[]) => ops.concat(cur), []);
+      return res.status(200).send(`${flattenedResults.join('\n')}`);
+    } catch(e) {
+      return res.status(500).send(e).end()
     }
-
-    for(let article of delivery.mailings[0].articles) {
-      const pocket = new Pocket({
-        consumer_key: process.env.POCKET_KEY, 
-        access_token: (delivery.user as User).token
-      });
-      let operations = req.params.operation.toLowerCase() === 'fav-and-archive' ? ['favorite', 'archive'] : [req.params.operation.toLowerCase()];
-      for (let op of operations) {
-        let resp;
-        switch(op)
-        {
-          case "archive":
-            resp = await pocket.archive({ item_id: article.pocketId });
-            break;
-          case "favorite":
-            resp = await pocket.favorite({ item_id: article.pocketId });
-            break;
-          default:
-            res.status(500).send(`Operation ${op} not supported`);
-        }
-        if (resp.status != 1) {
-          res.status(500).send('Archive failed! Try again later.');
-          return;
-        }
-      }
-    }
-    // TODO: Better Response for Kindle viz
-    return res.status(200).send(`Articles archived!`);
   }
 );
 
@@ -86,49 +93,24 @@ router.get(
         }
       ).populate('user').exec();
     } catch {
-      return res.status(500).send("Error retrieving delivery");
+      return res.status(500).send("Error retrieving delivery").end();
     }
 
-    // TODO: Validate operation
-    if (delivery === null || delivery === undefined) {
-      return res.status(500).send('There was a problem finding the delivery.');
+    if (!!!delivery || !!!delivery.mailings) {
+      return res.status(500).send('There was a problem finding the delivery.').end();
     }
 
-    if(delivery.mailings === undefined) {
-      return res.status(500).send('There was a problem finding the delivery.');
+    try {
+      const results = await HandleArticleOperation(req.params.operation, (delivery!.user as User).token, delivery.mailings[0].articles[0]);
+      return res.status(200).send(`${results.join('\n')}`);
+    } catch(e) {
+      return res.status(500).send(e).end()
     }
-    
-    const pocket = new Pocket({
-      consumer_key: process.env.POCKET_KEY, 
-      access_token: (delivery.user as User).token
-    });
-    let articleId = delivery.mailings[0].articles[0].pocketId;
-    let operations = req.params.operation.toLowerCase() === 'fav-and-archive' ? ['favorite', 'archive'] : [req.params.operation.toLowerCase()];
-    for (let op of operations) {
-      let resp;
-      switch(op)
-      {
-        case "archive":
-          resp = await pocket.archive({ item_id: articleId });
-          break;
-        case "favorite":
-          resp = await pocket.favorite({ item_id: articleId });
-          break;
-        default:
-          res.status(500).send(`Operation ${op} not supported`);
-      }
-      if (resp.status != 1) {
-        res.status(500).send('Archive failed! Try again later.');
-        return;
-      }
-    }
-    // TODO: Better Response for Kindle viz
-    return res.status(200).send(`Article ${req.params.operation}!`);
   }
 );
 
 // TODO: This requires my account due to auth... uhmmm...
-const SendAll = router.get(
+router.get(
   '/sendAll',
   async(req, res) => {
     // TODO: This can only be called from Azure directly, use admin only account maybe? or check domain from request?
@@ -180,6 +162,8 @@ const SendAll = router.get(
           if (sent) {
             sentDeliveries.push(delivery);
             await DecreaseCredit(delivery.user as UserDocument);
+          } else {
+            throw "Couldn't make a delivery. Try again later.";
           }
         } catch(e) {
           // Just log the error and continue
@@ -187,8 +171,6 @@ const SendAll = router.get(
         }
       }
     }
-    
-    // 6. Return list of deliveries sent
     res.status(200).send(sentDeliveries);
   }
 );
@@ -228,26 +210,19 @@ router.post(
         user: req.user._id,
       }
       delivery = await DeliveryModel.create(delivery);
-      // delivery = SanitizeDelivery(delivery);
       return res.status(201).send(delivery);
     } catch(e) {
       console.error(e);
       if (e.name === 'ValidationError') {
-        return res.status(400).send({
+        return res.status(400).send(
+        {
           message: e.message,
           errors: Object
             .keys(e.errors)
-            .reduce(
-              (map, obj) => { 
-                map[obj] = e.errors[obj].message; 
-                return map 
-              }, 
-              {})
+            .reduce((map, obj) => map[obj] = e.errors[obj].message, {})
         });
       } else {
-        return res.status(500).send({
-          message: e.message
-        });
+        return res.status(500).send({ message: e.message });
       }
     }
   }
@@ -271,7 +246,6 @@ router.put(
     } 
     // TODO: remove all things from body that shouldn't be updted
     delivery = {...delivery, ...req.body};
-    // delivery = SanitizeDelivery(delivery);
 
     try {
       delivery = await DeliveryModel.findByIdAndUpdate(
@@ -304,32 +278,6 @@ router.put(
   }
 );
 
-// TODO: Move elsewhere 
-
-const SanitizeDelivery = (delivery) => {
-  // Remove Empty tags
-  if (delivery.query !== undefined) {
-    if (delivery.query.includedTags !== undefined) {
-      delivery.query.includedTags = cleanEmpty(delivery.query.includedTags);
-    }
-    if (delivery.query.excludedTags !== undefined) {
-      delivery.query.excludedTags = cleanEmpty(delivery.query.excludedTags);
-    }
-  }
-  return delivery;
-}
-
-function cleanEmpty(tags) {
-  var cleanTags = new Array();
-  for (var i = 0; i < tags.length; i++) {
-    if (tags[i] !== undefined && tags[i] !== null && tags[i].trim().length > 0 ) {
-      cleanTags.push(tags[i]);
-    }
-  }
-  return cleanTags;
-}
-
-// Delete an user
 router.delete(
   '/:id', 
   passport.authenticate('bearer', { session: false }), 
@@ -397,12 +345,13 @@ router.get(
       if (sent) {
         await DecreaseCredit(delivery.user as UserDocument);
         return res.status(200).send("Delivery Sent!");
+      } else {
+        throw 'Couldn\'t send a delivery. Please try again later';
       }
     } catch(err) {
       console.error(err);
-      return res.status(500).send(`Delivery Couldn't be sent! Error: ${err}`);
+      return res.status(500).send(`Delivery couldn't be sent! Error: ${err}`);
     }
-    return res.status(500).send("Delivery Couldn't be sent!");
   }
 );
 
@@ -416,49 +365,70 @@ async function MakeDelivery(delivery: DeliveryDocument, user: User) {
     });
   }
   delivery.mailings = (delivery.mailings !== undefined) ? delivery.mailings : [];
-
   let n = delivery.mailings.push({
     datetime: new Date(),
     articles: savedArticles
   });
-
   // Adding the Saved ID to out articles object from pocket, 
   // so that we can use this to fill the links correctly in the template
   savedArticles = delivery.mailings[n-1].articles;
   for (let i = 0; i < savedArticles.length; i++) {
     articles[i].id = savedArticles[i].id;
   }
-
   let saved = await delivery.save();
   if (!saved) {
-    return false;
+    throw 'Cannot save delivery to database!';
   }
-
   let sent = await SendDelivery(delivery.kindle_email, articles);
-
   if (sent && delivery.autoArchive) {
     try {
       const pocket = new Pocket({
         consumer_key: process.env.POCKET_KEY, 
         access_token: (delivery.user as User).token
       });
-      for (let article of savedArticles) {
-        let articleStatus = await pocket.archive({ item_id: article.pocketId });
-        console.log(articleStatus);
-      }
+      await Promise.all(savedArticles.map(article => pocket.archive({ item_id: article.pocketId })));
     } catch(e) {
       console.error(e);
     }
   }
-
   return sent;
 }
 
 async function DecreaseCredit(user: UserDocument) {
-
   user.credits -= 1;
   let userSaved = await user.save();
   return userSaved;
+}
+
+async function HandleArticleOperation(operation: string, pocketUserToken: string, article: Article): Promise<string[]> {
+  let operationsDone: string[] = [];
+  if (!!!operation || !(operation in ArticleOperations)) {
+    throw `Operation ${operation} not supported`;
+  }
+  const enumOp = ArticleOperations[operation];
+  const operations = enumOp === ArticleOperations.FavAndArchive ? [ArticleOperations.Archive, ArticleOperations.Favorite] : [enumOp];
+  const pocket = new Pocket({
+    consumer_key: process.env.POCKET_KEY, 
+    access_token: pocketUserToken, // (delivery.user as User).token
+  });
+  for (let op of operations) {
+    let resp;
+    switch(op)
+    {
+      case ArticleOperations.Archive:
+        resp = await pocket.archive({ item_id: article.pocketId });
+        break;
+      case ArticleOperations.Favorite:
+        resp = await pocket.favorite({ item_id: article.pocketId });
+        break;
+    }
+    if (resp.status != 1) {
+      operationsDone.push(`╳ ${article.url}: Operation ${op} failed! Try again later`);
+    } else {
+      operationsDone.push(`${ArticleMarkers[op]} ${article.url}`);
+    }
+  }
+  return operationsDone;
 }
 
 function isOwnDelivery(delivery: DeliveryDocument, user: UserDocument): boolean {
@@ -468,26 +438,6 @@ function isOwnDelivery(delivery: DeliveryDocument, user: UserDocument): boolean 
     (delivery.user.toString() === user._id.toString() || 
     ((delivery.user as UserDocument)._id !== undefined && (delivery.user as UserDocument)._id.toString() === user._id.toString()))
     );
-}
-
-const timeslots = [
-  'Dawn', // 4:00
-  'Morning', // 8:00
-  'Noon', // 12:00
-  'Afternoon', // 16:00
-  'Evening', // 20:00
-  'Midnight', // 24:00
-]
-
-// JS Date Sunday = 0
-enum WeekDays {
-  Sunday,
-  Monday,
-  Tuesday,
-  Wednesday,
-  Thursday,
-  Friday,
-  Saturday,
 }
 
 function getTimeSlot(currentTime: Date) {
