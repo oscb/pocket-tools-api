@@ -24,7 +24,7 @@ enum OrderBy {
   Oldest
 }
 
-enum Frequency {
+export enum Frequency {
   Daily,
   Weekly
 }

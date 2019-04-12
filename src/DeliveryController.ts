@@ -1,8 +1,9 @@
 import { Router } from "express";
 import passport from 'passport';
-import { Article, DeliveryDocument, DeliveryModel } from "./Delivery";
+import { Article, DeliveryDocument, DeliveryModel, Frequency } from "./Delivery";
 import { ExecuteQuery, SendDelivery } from "./DeliveryManager";
 import { User, UserDocument } from "./User";
+import { isSuperUser } from "./UserController";
 export const router = Router();
 const Pocket = require('pocket-promise');
 
@@ -112,8 +113,12 @@ router.get(
 // TODO: This requires my account due to auth... uhmmm...
 router.get(
   '/sendAll',
+  passport.authenticate('bearer', { session: false }), 
   async(req, res) => {
     // TODO: This can only be called from Azure directly, use admin only account maybe? or check domain from request?
+    if (!isSuperUser(req.user)) {
+      return res.status(403).send().end();
+    }
     // 1. Transform current date into a time slot
     const today = new Date();
     const currentTimeslot = getTimeSlot(today);
@@ -125,11 +130,8 @@ router.get(
         'active' : true, 
         'time': timeslots[currentTimeslot],
         $or: [
-          {'days': { exists: false }},
-          {'days': null },
-          { 'days' : {
-              $in : [ currentDay, currentDate ]
-          }},
+          { 'frequency' : Frequency[Frequency.Daily] },
+          { 'days' : { $in : [ currentDay, currentDate ] }},
         ]
         // TODO: [Optimization] Get list of users with credits available and filter them here
       })
@@ -169,7 +171,7 @@ router.get(
         }
       }
     }
-    res.status(200).send(sentDeliveries);
+    return res.status(200).send(sentDeliveries);
   }
 );
 

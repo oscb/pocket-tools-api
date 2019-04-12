@@ -167,7 +167,7 @@ async function CreateStripeCustomer(user: UserDocument, source?: string) {
 }
 
 // TODO: Move this into the user class?
-function isSuperUser(user: User) {
+export function isSuperUser(user: User) {
   return user.subscription === Subscriptions.Admin;
 }
 
