@@ -151,9 +151,9 @@ export const SendDelivery = async (email: string, deliveryId: string, articles: 
       let contents = contentTemplate({ 
         ...parsedArticle,  
         controls: controlsTemplate({
-          fav_url: `${process.env.URL_PREFIX}/deliveries/mailings/${deliveryId}/articles/${article.item_id}/favorite`,
-          archive_url: `${process.env.URL_PREFIX}/deliveries/mailings/${deliveryId}/articles/${article.item_id}/archive`,
-          fav_and_archive_url: `${process.env.URL_PREFIX}/deliveries/mailings/${deliveryId}/articles/${article.item_id}/fav-and-archive`
+          fav_url: `${process.env.URL_PREFIX}/deliveries/${deliveryId}/articles/${article.item_id}/favorite`,
+          archive_url: `${process.env.URL_PREFIX}/deliveries/${deliveryId}/articles/${article.item_id}/archive`,
+          fav_and_archive_url: `${process.env.URL_PREFIX}/deliveries/${deliveryId}/articles/${article.item_id}/fav-and-archive`
         })
       });
       

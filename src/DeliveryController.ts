@@ -60,12 +60,12 @@ router.get(
  * TODO: Evaluate changing queries to another of the interfaces CosmosDB exposes: SQL or GraphQL
  */
 router.get(
-  '/mailings/:sentid/articles/:articleid/:operation',
+  '/:id/articles/:articleid/:operation',
   async (req, res) => {
     let delivery: DeliveryDocument | null;
     try {
       delivery = await DeliveryModel.findOne(
-        { '_id' : Types.ObjectId(req.params.sentid) },
+        { '_id' : Types.ObjectId(req.params.id) },
         {
           'user': 1
         }
