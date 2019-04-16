@@ -2,41 +2,23 @@ import * as fs from 'fs';
 import { JSDOM } from "jsdom";
 import _ from "lodash";
 import * as path from 'path';
-import { promisify } from 'util';
 import { Query, CountType } from "./Delivery";
 import { User } from "./User";
 import sgMail from "@sendgrid/mail"
-import { Glob } from 'glob';
 import dayjs from 'dayjs';
 import { MailData } from '@sendgrid/helpers/classes/mail';
 import { createCover } from './CoverCreator';
+import { getArticleTemplate, getControlsTemplate } from './articleTemplate';
+import { asyncReadFile } from './asyncReadFile';
 
 const readability = require('readability');
 const periodical = require('kindle-periodical');
 const Pocket = require('pocket-promise');
 const { extract } = require('article-parser');
 
-const readFile = promisify(fs.readFile);
 const MAX_QUERIES = 5;
 const WPM = 230;
 
-const getArticleTemplate = (() => {
-  let articleTemplate: _.TemplateExecutor;
-  return async () => {
-    if (articleTemplate === undefined) {
-      articleTemplate = _.template(await getTemplate('article.html'));
-    }
-    return articleTemplate;
-  }
-})();
-
-function getTemplate (filename) {
-  let filePath = path.join(__dirname, '../', 'templates', filename);
-  
-  return readFile(filePath, {
-    encoding: 'UTF-8'
-  });
-}
 
 function createDeliveryDirectory(): string {
   // TODO: Not the best but enough for now
@@ -127,7 +109,7 @@ export const ExecuteQuery = async (user: User, query: Query) => {
       console.log(`+ ${article.resolved_title}`);
       filteredArticles.push(article);
       count += (query.countType === CountType.Count) ? 1 : (article.word_count/WPM)
-      if (count > query.count) {
+      if (count >= query.count) {
         break;
       }
     }
@@ -136,11 +118,13 @@ export const ExecuteQuery = async (user: User, query: Query) => {
   return filteredArticles;
 };
 
-export const SendDelivery = async (email: string, articles: any, ...opts: any[]) => {
+export const SendDelivery = async (email: string, deliveryId: string, articles: any, ...opts: any[]) => {
   let deliveryDir: string | null = null;
   try {
     deliveryDir = createDeliveryDirectory();
+    const controlsTemplate = await getControlsTemplate();
     const contentTemplate = await getArticleTemplate();
+
     let articlesData: any = [];
     for(let article of articles) {
       let parsedArticle;
@@ -166,9 +150,11 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
       }
       let contents = contentTemplate({ 
         ...parsedArticle,  
-        fav_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/favorite`,
-        archive_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/archive`,
-        fav_and_archive_url: `${process.env.URL_PREFIX}/deliveries/articles/${article.id}/fav-and-archive`
+        controls: controlsTemplate({
+          fav_url: `${process.env.URL_PREFIX}/deliveries/mailings/${deliveryId}/articles/${article.item_id}/favorite`,
+          archive_url: `${process.env.URL_PREFIX}/deliveries/mailings/${deliveryId}/articles/${article.item_id}/archive`,
+          fav_and_archive_url: `${process.env.URL_PREFIX}/deliveries/mailings/${deliveryId}/articles/${article.item_id}/fav-and-archive`
+        })
       });
       
       articlesData.push({
@@ -204,7 +190,7 @@ export const SendDelivery = async (email: string, articles: any, ...opts: any[])
     
     // Send with sendgrid
     const lastPub = path.join(deliveryDir, `${fileName}.mobi`);
-    let data = await readFile(lastPub);
+    let data = await asyncReadFile(lastPub);
     const msg: MailData = {
       to: email, 
       from: process.env.FROM_EMAIL!,

@@ -1,50 +1,58 @@
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <title>
-        <%= title %>
+        ${title}
     </title>
-</head>
+    <style>
+        h1, h2, h3, h4, h5, h6, p {
+            margin-top: 0.25em;
+        }
 
+        .article__url {
+            font-size: 70%; 
+            text-indent:0;
+        }
+
+        .article__title {
+            font-size: 200%;
+        }
+
+        .article__author {
+            font-size: 130%;
+        }
+
+        .article__controls {
+            text-indent:0; 
+            text-align: center;
+        }
+    </style>
+</head>
 <body>
     <article>
-        <p>
+        <p class="article__url">
             <i>
-                <a href="<%= url %>">
-                    <%= url %>
+                <a href="${url}">
+                    ${url}
                 </a>
             </i>
         </p>
-        <h1>
-            <%= title %>
+        <h1 class="article__title">
+            ${title}
         </h1>
-        <p>
-            <%= author %>
-        </p>
-        <p>
-            <% if (typeof fav_url != 'undefined') { %>
-                <a href="<%= fav_url %>">★ Favorite</a> |
-                <% } %>
-                    <% if (typeof archive_url != 'undefined') { %>
-                        <a href="<%= archive_url %>">⦿ Archive</a> |
-                        <% } %>
-                            <% if (typeof fav_and_archive_url != 'undefined') { %>
-                                <a href="<%= fav_and_archive_url %>">✪ Fav + Archive</a>
-                                <% } %>
-        </p>
-        <%= content %>
-            <p>
-                <% if (typeof fav_url != 'undefined') { %>
-                    <a href="<%= fav_url %>">★ Favorite</a> |
-                    <% } %>
-                        <% if (typeof archive_url != 'undefined') { %>
-                            <a href="<%= archive_url %>">⦿ Archive</a> |
-                            <% } %>
-                                <% if (typeof fav_and_archive_url != 'undefined') { %>
-                                    <a href="<%= fav_and_archive_url %>">✪ Fav + Archive</a>
-                                    <% } %>
-            </p>
+        <% if (!!author) { %>
+            <h3 class="article__author">
+                By ${author}
+            </h3>
+        <% } %>
+        ${controls}
+        <hr>
+        <br />
+        ${content}
+        <br />
+        <br />
+        <hr>
+        ${controls}
     </article>
 </body>
 

@@ -7,26 +7,27 @@ import { ObjectId } from 'bson';
 export interface Article {
   pocketId: string;
   url: string;
+  title: string;
 }
 
 export interface Mailing {
   datetime: Date;
-  articles: Article[];
+  articles: Article[] | ArticleDocument[];
 }
 
 export enum CountType {
-  Count,
-  Time
+  Count = "Count",
+  Time = "Time"
 }
 
 enum OrderBy {
-  Newest,
-  Oldest
+  Newest = "Newest",
+  Oldest = "Oldest"
 }
 
 export enum Frequency {
-  Daily,
-  Weekly
+  Daily = "Daily",
+  Weekly = "Weekly"
 }
 
 export interface Query {
@@ -49,7 +50,7 @@ export interface Delivery {
   timezone: number;
   days?: string[];
   autoArchive: boolean;
-  mailings?: Mailing[];
+  mailings?: Mailing[] | MailingDocument[];
 }
 
 // Documents
@@ -62,7 +63,7 @@ export interface DeliveryDocument extends Delivery, Document { }
 const ArticleSchema = new Schema({
   pocketId: String,
   url: String,
-  // TODO: What else? Content?
+  title: String,
 });
 
 const MailingSchema = new Schema({

@@ -1,13 +1,14 @@
 import { Router } from "express";
 import passport from 'passport';
-import { Article, DeliveryDocument, DeliveryModel, Frequency } from "./Delivery";
+import { Article, DeliveryDocument, DeliveryModel, Frequency, Mailing, MailingDocument } from "./Delivery";
 import { ExecuteQuery, SendDelivery } from "./DeliveryManager";
 import { User, UserDocument } from "./User";
 import { isSuperUser } from "./UserController";
+import { Types } from "mongoose";
 export const router = Router();
 const Pocket = require('pocket-promise');
 
-enum ArticleOperations {
+const enum ArticleOperations {
   Favorite = 'favorite',
   Archive = 'archive',
   FavAndArchive = 'fav-and-archive'
@@ -48,64 +49,40 @@ router.get(
   }
 );
 
+/* 
+ * Note: CosmosDB adapter for Mongo queries seems to be pretty limited on projections/queries in arrays
+ * Queries do not seem to handle well 2 level nested arrays
+ * Also, projections ($) to return only the first element that matched do not seem to work at all 
+ * 
+ * For now the url will include the mailing id and pocketId 
+ * That way I can use the mailingId to impersonate the user and the pocketId for the op
+ * 
+ * TODO: Evaluate changing queries to another of the interfaces CosmosDB exposes: SQL or GraphQL
+ */
 router.get(
-  '/mailings/:sentid/:operation',
+  '/mailings/:sentid/articles/:articleid/:operation',
   async (req, res) => {
     let delivery: DeliveryDocument | null;
     try {
       delivery = await DeliveryModel.findOne(
-        { 'mailings._id' : req.params.sentid }, 
-        { 
-          'user': 1,
-          'mailings.$': 1 
-        }
-      ).populate('user').exec();
-    } catch {
-      return res.status(500).send("Error retrieving delivery");
-    }
-    
-    if (!!!delivery || !!!delivery.mailings) {
-      return res.status(500).send('There was a problem finding the delivery.');
-    }
-
-    const articleOperations = Promise.all(delivery.mailings[0].articles
-      .map(article => HandleArticleOperation(req.params.operation, (delivery!.user as User).token, article)));
-    try {
-      const results = await articleOperations;
-      const flattenedResults = results.reduce((ops:string[], cur:string[]) => ops.concat(cur), []);
-      return res.status(200).send(`${flattenedResults.join('\n')}`);
-    } catch(e) {
-      return res.status(500).send(e).end()
-    }
-  }
-);
-
-
-router.get(
-  '/articles/:articleid/:operation',
-  async (req, res) => {
-    let delivery: DeliveryDocument | null;
-    try {
-      delivery = await DeliveryModel.findOne(
-        { 'mailings.articles._id' : req.params.articleid }, 
-        { 
-          'user': 1,
-          'mailings.articles.$': 1 
+        { 'mailings._id' : Types.ObjectId(req.params.sentid) },
+        {
+          'user': 1
         }
       ).populate('user').exec();
     } catch {
       return res.status(500).send("Error retrieving delivery").end();
     }
-
-    if (!!!delivery || !!!delivery.mailings) {
+    
+    if (!!!delivery) {
       return res.status(500).send('There was a problem finding the delivery.').end();
     }
 
     try {
-      const results = await HandleArticleOperation(req.params.operation, (delivery!.user as User).token, delivery.mailings[0].articles[0]);
+      const results = await HandleArticleOperation(req.params.operation, (delivery!.user as User).token, req.params.articleid);
       return res.status(200).send(`${results.join('\n')}`);
     } catch(e) {
-      return res.status(500).send(e).end()
+      return res.status(500).send(e).end();
     }
   }
 );
@@ -361,29 +338,24 @@ router.get(
 
 async function MakeDelivery(delivery: DeliveryDocument, user: User) {
   let articles = await ExecuteQuery(user, delivery.query);
-  let savedArticles: any[] = []
+  let savedArticles: Article[] = []
   for (let article of articles) {
     savedArticles.push({
       pocketId: article.item_id,
-      url: article.resolved_url
+      url: article.resolved_url,
+      title: article.resolved_title
     });
   }
   delivery.mailings = (delivery.mailings !== undefined) ? delivery.mailings : [];
-  let n = delivery.mailings.push({
+  delivery.mailings.push({
     datetime: new Date(),
     articles: savedArticles
   });
-  // Adding the Saved ID to out articles object from pocket, 
-  // so that we can use this to fill the links correctly in the template
-  savedArticles = delivery.mailings[n-1].articles;
-  for (let i = 0; i < savedArticles.length; i++) {
-    articles[i].id = savedArticles[i].id;
-  }
   let saved = await delivery.save();
   if (!saved) {
     throw 'Cannot save delivery to database!';
   }
-  let sent = await SendDelivery(delivery.kindle_email, articles);
+  let sent = await SendDelivery( delivery.kindle_email, delivery._id.toString(), articles);
   if (sent && delivery.autoArchive) {
     try {
       const pocket = new Pocket({
@@ -404,32 +376,34 @@ async function DecreaseCredit(user: UserDocument) {
   return userSaved;
 }
 
-async function HandleArticleOperation(operation: string, pocketUserToken: string, article: Article): Promise<string[]> {
+async function HandleArticleOperation(operation: string, pocketUserToken: string, articleId: string): Promise<string[]> {
   let operationsDone: string[] = [];
-  if (!!!operation || !(operation in ArticleOperations)) {
-    throw `Operation ${operation} not supported`;
+  if (!!!operation) {
+    throw "No operation to do!";
   }
-  const enumOp = ArticleOperations[operation];
-  const operations = enumOp === ArticleOperations.FavAndArchive ? [ArticleOperations.Archive, ArticleOperations.Favorite] : [enumOp];
+  const operations = operation === ArticleOperations.FavAndArchive ? [ArticleOperations.Archive, ArticleOperations.Favorite] : [operation];
   const pocket = new Pocket({
     consumer_key: process.env.POCKET_KEY, 
-    access_token: pocketUserToken, // (delivery.user as User).token
+    access_token: pocketUserToken,
   });
   for (let op of operations) {
     let resp;
     switch(op)
     {
       case ArticleOperations.Archive:
-        resp = await pocket.archive({ item_id: article.pocketId });
+        resp = await pocket.archive({ item_id: articleId });
         break;
       case ArticleOperations.Favorite:
-        resp = await pocket.favorite({ item_id: article.pocketId });
+        resp = await pocket.favorite({ item_id: articleId });
         break;
+      default:
+        throw `Operation ${operation} not supported`;
     }
     if (resp.status != 1) {
-      operationsDone.push(`╳ ${article.url}: Operation ${op} failed! Try again later`);
+      operationsDone.push(`╳ ${articleId}: Operation ${op} failed! Try again later`);
     } else {
-      operationsDone.push(`${ArticleMarkers[op]} ${article.url}`);
+      // TODO: This could be so much nicer, but I cannot safely get the right article from cosmosdb :(
+      operationsDone.push(`${ArticleMarkers.get(op)} ${op}d`);
     }
   }
   return operationsDone;

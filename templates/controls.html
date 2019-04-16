@@ -1,0 +1,11 @@
+<p class="article__controls">
+    <% if (!!archive_url) { %>
+        <a href="${archive_url}">✔ Archive</a>
+    <% } %>
+    <% if (!!fav_url) { %>
+        | <a href="${fav_url}">★ Favorite</a>
+    <% } %>
+    <% if (!!fav_and_archive_url) { %>
+        | <a href="${fav_and_archive_url}">✪ Fav + Archive</a>
+    <% } %>
+</p>
