@@ -117,37 +117,50 @@ router.get(
 
     // 3. Check if last delivery was sent > 12 hours ago
     let sentDeliveries: DeliveryDocument[] = [];
-    let users: { [id: string]: UserDocument; } = { };
+    let deliveryJobs: Promise<boolean>[] = [];
+    let tempUserCredits: {[userId: string]: number} = {};
     for(let delivery of userDeliveries) {
       let user = delivery.user as UserDocument;
-      if (user.id in users) {
-        user = users[user.id];
+      if (!(user.id in tempUserCredits)) {
+        tempUserCredits[user.id] = user.credits;
       }
 
-      // TODO: Not sure if ordered already...
-      if (user.credits > 0) {
+      if (tempUserCredits[user.id] > 0) {
         if (delivery.mailings !== undefined && delivery.mailings.length > 0) {
-          const lastMail = delivery.mailings[0];
+          const lastMail = delivery.mailings[delivery.mailings.length-1];
           const timeSinceLast = today.getTime() - lastMail.datetime.getTime();
           // Not sending emails more than once every 12 
           if ((timeSinceLast/(1000*60*60)) < 12) {
             continue;
           }
         }
-        try {
-          const sent = await MakeDelivery(delivery, delivery.user as User);
-          if (sent) {
-            sentDeliveries.push(delivery);
-            await DecreaseCredit(delivery.user as UserDocument);
-          } else {
-            throw "Couldn't make a delivery. Try again later.";
-          }
-        } catch(e) {
-          // Just log the error and continue
-          console.error(e);
-        }
+        // TODO: Optimization: I can keep track of the actual number of deliveries sent per user and do the updates as 1 operation
+        deliveryJobs.push(MakeDelivery(delivery, delivery.user as User)
+          .then(async sent => {
+            if (sent) {
+              sentDeliveries.push(delivery);
+              await DecreaseCredit(delivery.user as UserDocument);
+            }
+            return sent;
+          })
+          .catch(e => 
+          { 
+            console.error(e);
+            return false;
+          }) );
+        tempUserCredits[user.id]--;
       }
     }
+
+    if (deliveryJobs.length > 0) {
+      try {
+        await Promise.all(deliveryJobs);
+      } catch(e) {
+        console.error(e);
+        return res.status(500).send(e);
+      }
+    }
+
     return res.status(200).send(sentDeliveries);
   }
 );
