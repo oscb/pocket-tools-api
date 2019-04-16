@@ -65,7 +65,7 @@ router.get(
     let delivery: DeliveryDocument | null;
     try {
       delivery = await DeliveryModel.findOne(
-        { 'mailings._id' : Types.ObjectId(req.params.sentid) },
+        { '_id' : Types.ObjectId(req.params.sentid) },
         {
           'user': 1
         }
@@ -355,7 +355,7 @@ async function MakeDelivery(delivery: DeliveryDocument, user: User) {
   if (!saved) {
     throw 'Cannot save delivery to database!';
   }
-  let sent = await SendDelivery( delivery.kindle_email, delivery._id.toString(), articles);
+  let sent = await SendDelivery(delivery.kindle_email, delivery._id.toString(), articles);
   if (sent && delivery.autoArchive) {
     try {
       const pocket = new Pocket({
