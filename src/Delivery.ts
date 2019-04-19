@@ -51,6 +51,7 @@ export interface Delivery {
   days?: string[];
   autoArchive: boolean;
   mailings?: Mailing[] | MailingDocument[];
+  noDuplicates: boolean;
 }
 
 // Documents
@@ -135,6 +136,11 @@ const DeliverySchema = new Schema({
   autoArchive: {
     type: Boolean,
     required: true,
+  },
+  noDuplicates: {
+    type: Boolean,
+    required: true,
+    default: true
   },
   mailings: [MailingSchema]
 }, { 

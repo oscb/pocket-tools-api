@@ -126,8 +126,9 @@ router.get(
       }
 
       if (tempUserCredits[user.id] > 0) {
+        let lastMail: Mailing | null = null;
         if (delivery.mailings !== undefined && delivery.mailings.length > 0) {
-          const lastMail = delivery.mailings[delivery.mailings.length-1];
+          lastMail = delivery.mailings[delivery.mailings.length-1];
           const timeSinceLast = today.getTime() - lastMail.datetime.getTime();
           // Not sending emails more than once every 12 
           if ((timeSinceLast/(1000*60*60)) < 12) {
@@ -135,7 +136,24 @@ router.get(
           }
         }
         // TODO: Optimization: I can keep track of the actual number of deliveries sent per user and do the updates as 1 operation
-        deliveryJobs.push(MakeDelivery(delivery, delivery.user as User)
+        const articles = await ExecuteQuery(req.user, delivery.query);
+        if (!!!articles || articles.length === 0) {
+          continue;
+        }
+        
+        if (delivery.noDuplicates) {
+          if (lastMail !== null) {
+            for(const a of lastMail.articles) {
+              if (articles.includes((b) => {
+                return a.pocketId === b.pocketId;
+              })) {
+                continue;
+              }
+            }
+          }
+        }
+
+        deliveryJobs.push(MakeDelivery(delivery, articles)
           .then(async sent => {
             if (sent) {
               sentDeliveries.push(delivery);
@@ -335,7 +353,8 @@ router.get(
     }
     
     try {
-      const sent = await MakeDelivery(delivery, req.user);
+      const articles = await ExecuteQuery(req.user, delivery.query);
+      const sent = await MakeDelivery(delivery, articles);
       if (sent) {
         await DecreaseCredit(delivery.user as UserDocument);
         return res.status(200).send("Delivery Sent!");
@@ -349,8 +368,11 @@ router.get(
   }
 );
 
-async function MakeDelivery(delivery: DeliveryDocument, user: User) {
-  let articles = await ExecuteQuery(user, delivery.query);
+async function MakeDelivery(delivery: DeliveryDocument, articles: any[]) {
+  if (!!!articles || articles.length === 0) {
+    return false;
+  }
+
   let savedArticles: Article[] = []
   for (let article of articles) {
     savedArticles.push({
@@ -375,7 +397,12 @@ async function MakeDelivery(delivery: DeliveryDocument, user: User) {
         consumer_key: process.env.POCKET_KEY, 
         access_token: (delivery.user as User).token
       });
-      await Promise.all(savedArticles.map(article => pocket.archive({ item_id: article.pocketId })));
+      pocket.send({
+        actions: savedArticles.map(article => { return {
+          action: 'archive',
+          item_id: article.pocketId
+        }})
+      });
     } catch(e) {
       console.error(e);
     }
