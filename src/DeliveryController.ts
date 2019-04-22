@@ -141,18 +141,19 @@ router.get(
           continue;
         }
         
-        if (delivery.noDuplicates) {
-          if (lastMail !== null) {
-            for(const a of lastMail.articles) {
-              if (articles.includes((b) => {
-                return a.pocketId === b.pocketId;
-              })) {
-                continue;
-              }
+
+        if (delivery.noDuplicates && lastMail !== null) {
+          let foundDuplicate = false;
+          for(const a of lastMail.articles) {
+            if (articles.find((b) => (a.pocketId === b.item_id))) {
+              foundDuplicate = true;
+              break;
             }
           }
+          if (foundDuplicate) {
+            continue;
+          }
         }
-
         deliveryJobs.push(MakeDelivery(delivery, articles)
           .then(async sent => {
             if (sent) {
@@ -161,11 +162,10 @@ router.get(
             }
             return sent;
           })
-          .catch(e => 
-          { 
-            console.error(e);
-            return false;
-          }) );
+          .catch(e => { 
+              console.error(e);
+              return false;
+            }) );
         tempUserCredits[user.id]--;
       }
     }
