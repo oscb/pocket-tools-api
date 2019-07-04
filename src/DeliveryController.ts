@@ -136,7 +136,13 @@ router.get(
           }
         }
         // TODO: Optimization: I can keep track of the actual number of deliveries sent per user and do the updates as 1 operation
-        const articles = await ExecuteQuery(req.user, delivery.query);
+        let articles : any[];
+        try {
+          articles = await ExecuteQuery(req.user, delivery.query);
+        } catch (e) {
+          console.error(e);
+          continue;
+        }
         if (!!!articles || articles.length === 0) {
           continue;
         }
@@ -325,9 +331,14 @@ router.get(
     if(!isOwnDelivery(delivery, req.user)) {
       return res.status(401).send('Unauthorized');
     } 
-    let articles = await ExecuteQuery(req.user, delivery.query);
-    // TODO: Strip down all the things I don't need from the article before sending
-    return res.status(200).send(articles);
+    try {
+      let articles = await ExecuteQuery(req.user, delivery.query);
+      // TODO: Strip down all the things I don't need from the article before sending
+      return res.status(200).send(articles);
+    } catch(e) {
+      console.error(e);
+      return res.status(500).send(`Can't execute delivery! Error: ${e}`);
+    }
   }
 );
 
