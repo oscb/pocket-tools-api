@@ -84,7 +84,8 @@ const DeliverySchema = new Schema({
     validate: {
       validator: val => isKindleEmail(val),
       msg: `{VALUE} not a valid kindle email`
-    }
+    },
+    trim: true,
   },
   active: {
     type: Boolean,
@@ -105,7 +106,11 @@ const DeliverySchema = new Schema({
       required: true,
       enum: Object.keys(OrderBy).map(x => OrderBy[x]),
     },
-    domain: String,
+    domain: {
+      type: String,
+      required: false,
+      trim: true,
+    },
     includedTags: {
       type: [String],
       trim: true,
@@ -132,6 +137,7 @@ const DeliverySchema = new Schema({
   days: {
     type: [String],
     required: false,
+    trim: true,
   },
   autoArchive: {
     type: Boolean,

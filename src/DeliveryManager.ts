@@ -48,7 +48,7 @@ export const ExecuteQuery = async (user: User, query: Query) => {
     // Needs to be complete because it cannot do the exclusion correctly with simple (doesn't contain tags)
     detailType: 'complete',
   };
-  if (query.domain != null) defaultQuery.domain = query.domain;
+  if (query.domain !== null && query.domain !== "") defaultQuery.domain = query.domain;
 
   while(count < query.count && i <= MAX_QUERIES) {
     let pocketQuery = { 
