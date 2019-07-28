@@ -75,7 +75,7 @@ export const ExecuteQuery = async (user: User, query: Query) => {
       if (query.includedTags !== undefined && query.includedTags.length > 0) {
         if (article.tags) {
           for(let tag in article.tags) {
-            if (tag in query.includedTags) {
+            if (query.includedTags.indexOf(tag) > -1) {
               included = true;
               break;
             }
