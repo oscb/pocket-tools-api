@@ -36,7 +36,7 @@
     "lodash": "^4.17.11",
     "method-override": "^3.0.0",
     "minimist": "^1.2.0",
-    "mongoose": "^5.4.19",
+    "mongoose": "^5.7.5",
     "node-fetch": "^2.3.0",
     "node-readability": "^3.0.0",
     "nodemon": "^1.18.10",
