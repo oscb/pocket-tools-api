@@ -118,7 +118,12 @@ export const ExecuteQuery = async (user: User, query: Query) => {
   return filteredArticles;
 };
 
-export const SendDelivery = async (email: string, deliveryId: string, articles: any, ...opts: any[]) => {
+export enum Parser {
+  Mozilla,
+  ArticleParser
+}
+
+export const SendDelivery = async (email: string, deliveryId: string, articles: any, parser: Parser = Parser.ArticleParser) => {
   let deliveryDir: string | null = null;
   try {
     deliveryDir = createDeliveryDirectory();
@@ -129,9 +134,8 @@ export const SendDelivery = async (email: string, deliveryId: string, articles: 
     for(let article of articles) {
       let parsedArticle;
       let url = article.resolved_url != null ? article.resolved_url : article.given_url;
-      if (opts['parser'] === 'mozilla') {
+      if (parser === Parser.Mozilla) {
         const dom = await JSDOM.fromURL(url, { userAgent: "Mozilla/5.0" });
-        Node = dom.window.Node;
         let articleRaw = new readability(url, dom.window.document).parse();
         parsedArticle = {
           title: articleRaw.title,
@@ -187,29 +191,33 @@ export const SendDelivery = async (email: string, deliveryId: string, articles: 
         targetFolder: deliveryDir,
         filename: fileName,
       });
-    
+
     // Send with sendgrid
     const lastPub = path.join(deliveryDir, `${fileName}.mobi`);
-    let data = await asyncReadFile(lastPub);
-    const msg: MailData = {
-      to: email, 
-      from: process.env.FROM_EMAIL!,
-      subject: 'Pocket Tools Delivery!',
-      text: 'Pocket Delivery!',
-      attachments: [
-        {
-          content: data.toString('base64'),
-          filename: 'PocketTools.mobi',
-          type: 'application/x-mobipocket-ebook',
-          disposition: 'attachment',
-          contentId: 'book'
-        },
-      ],
-    };
-    sgMail.setApiKey(process.env.SENDGRID_TOKEN!);
-    var response = await sgMail.send(msg);
-    console.log("✓ Delivery sent!");
-    return (response[0].statusCode === 202);
+    if (fs.existsSync(lastPub)) {
+      let data = await asyncReadFile(lastPub);
+      const msg: MailData = {
+        to: email, 
+        from: process.env.FROM_EMAIL!,
+        subject: 'Pocket Tools Delivery!',
+        text: 'Pocket Delivery!',
+        attachments: [
+          {
+            content: data.toString('base64'),
+            filename: 'PocketTools.mobi',
+            type: 'application/x-mobipocket-ebook',
+            disposition: 'attachment',
+            contentId: 'book'
+          },
+        ],
+      };
+      sgMail.setApiKey(process.env.SENDGRID_TOKEN!);
+      var response = await sgMail.send(msg);
+      console.log("✓ Delivery sent!");
+      return (response[0].statusCode === 202);
+    } else {
+      throw new Error(`File not found at ${lastPub}`);
+    }
   } catch(e) {
     console.error(e);
     throw 'Cannot deliver email!';

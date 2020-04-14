@@ -18,7 +18,7 @@
     "@types/passport-http-bearer": "^1.0.33",
     "@types/stripe": "^6.25.6",
     "@types/superagent": "^4.1.1",
-    "article-parser": "^2.4.0",
+    "article-parser": "^4.1.1",
     "body-parser": "^1.18.3",
     "canvas": "^2.4.0",
     "cookie-parser": "^1.4.4",
