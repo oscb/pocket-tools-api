@@ -48,7 +48,7 @@
     "request": "^2.88.0",
     "rimraf": "^2.6.3",
     "sanitize-html": "^1.20.0",
-    "showdown": "^1.9.0",
+    "showdown": "^1.9.1",
     "stripe": "^6.27.0",
     "superagent": "^4.1.0",
     "ts-node": "^8.0.3",
