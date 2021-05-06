@@ -53,7 +53,7 @@
     "superagent": "^4.1.0",
     "ts-node": "^8.0.3",
     "typescript": "^3.3.3333",
-    "underscore": "^1.9.1",
+    "underscore": "^1.12.1",
     "utf8": "^3.0.0"
   },
   "scripts": {
