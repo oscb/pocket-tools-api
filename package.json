@@ -37,7 +37,7 @@
     "method-override": "^3.0.0",
     "minimist": "^1.2.0",
     "mongoose": "^5.4.19",
-    "node-fetch": "^2.3.0",
+    "node-fetch": "^2.6.7",
     "node-readability": "^3.0.0",
     "nodemon": "^1.18.10",
     "passport": "^0.4.0",
